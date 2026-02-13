@@ -24,6 +24,7 @@
 #[allow(unused_imports)]
 use std::io::{self, Write};
 
+
 fn main() {
     loop {
         print!("$ ");
@@ -40,6 +41,13 @@ fn main() {
         match parts[0] {
             "echo" => println!("{}", &command[4..].trim()),
             "exit" => break,
+            "type" => match parts[1] {
+                "echo" => println!("echo is a shell builtin"),
+                "exit" => println!("exit is a shell builtin"),
+                "type" => println!("type is a shell builtin"),
+                _ => println!("{}: not found", parts[1]),
+                
+            },
             _ => println!("{}: command not found", command.trim()),
         }
     }
