@@ -24,6 +24,21 @@
 #[allow(unused_imports)]
 use std::io::{self, Write};
 
+enum SHELL_BUILTINS {
+    ECHO,
+    EXIT,
+    TYPE
+}
+
+fn get_command(command: &str) -> Option<SHELL_BUILTINS> {
+    match command {
+        "echo" => Some(SHELL_BUILTINS::ECHO),
+        "exit" => Some(SHELL_BUILTINS::EXIT),
+        "type" => Some(SHELL_BUILTINS::TYPE),
+        _ => None,
+    }
+}
+
 
 fn main() {
     loop {
@@ -37,18 +52,17 @@ fn main() {
             println!("{}: command not found", command.trim());
             continue;
         }
+        
 
-        match parts[0] {
-            "echo" => println!("{}", &command[4..].trim()),
-            "exit" => break,
-            "type" => match parts[1] {
-                "echo" => println!("echo is a shell builtin"),
-                "exit" => println!("exit is a shell builtin"),
-                "type" => println!("type is a shell builtin"),
+        match get_command(&parts[0]) {
+            Some(SHELL_BUILTINS::ECHO) => println!("{}", &command[4..].trim()),
+            Some(SHELL_BUILTINS::EXIT) => break,
+            Some(SHELL_BUILTINS::TYPE) => match get_command(&parts[1]) {
+                Some(_) => println!("{} is a shell builtin", parts[1]),
                 _ => println!("{}: not found", parts[1]),
                 
             },
-            _ => println!("{}: command not found", command.trim()),
+            _ => println!("{}: command not found", parts[0]),
         }
     }
 }
