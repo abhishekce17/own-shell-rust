@@ -12,9 +12,11 @@ fn main() {
         if command.trim() == "exit" {break;}
         else if command[0..4].trim() == "echo" {
             print!("{}", command[4..].trim());
+            io::stdout().flush().unwrap();
         } 
         else {
             print!("{}: command not found", command.trim());
+            io::stdout().flush().unwrap();
         }
     }
 }
