@@ -23,6 +23,9 @@
 
 #[allow(unused_imports)]
 use std::io::{self, Write};
+use std::env;
+use std::path::Path;
+
 
 enum ShellBuiltins {
     ECHO,
@@ -37,6 +40,30 @@ fn get_command(command: &str) -> Option<ShellBuiltins> {
         "type" => Some(ShellBuiltins::TYPE),
         _ => None,
     }
+}
+
+fn is_executable_windows(path: &Path) -> bool {
+    if let Some(ext) = path.extension() {
+        let ext_str = ext.to_str().unwrap_or("").to_lowercase();
+        matches!(ext_str.as_str(), "exe" | "bat" | "cmd")
+    } else {
+        false
+    }
+}
+
+fn is_executable_command(command: &str){
+    if let Some(path_env) = env::var_os("PATH"){
+        for dir in env::split_paths(&path_env){
+            let full_path = dir.join(command);
+            if full_path.exists() && is_executable_windows(&full_path) {
+                println!("{} is {}", command, full_path.display());
+                break;
+            }
+        }
+        println!("{}: not found", command);
+        return;
+    }
+    println!("{}: not found", command);
 }
 
 
@@ -59,7 +86,7 @@ fn main() {
             Some(ShellBuiltins::EXIT) => break,
             Some(ShellBuiltins::TYPE) => match get_command(&parts[1]) {
                 Some(_) => println!("{} is a shell builtin", parts[1]),
-                _ => println!("{}: not found", parts[1]),
+                _ => is_executable_command(&parts[1]),
                 
             },
             _ => println!("{}: command not found", parts[0]),
