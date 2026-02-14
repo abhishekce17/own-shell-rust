@@ -43,6 +43,7 @@ fn get_command(command: &str) -> Option<ShellBuiltins> {
 
 fn is_executable_command(command: &str){
     if let Some(path_env) = env::var_os("PATH"){
+        println!("{}: searching in PATH", path_env.to_string_lossy());
         let exe_array: [&str; 3] = [ "exe" , "bat" , "cmd" ];
         for dir in env::split_paths(&path_env){
             let full_path = dir.join(command);
