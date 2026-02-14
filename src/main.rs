@@ -24,7 +24,6 @@
 #[allow(unused_imports)]
 use std::io::{self, Write};
 use std::env;
-use std::path::Path;
 
 
 enum ShellBuiltins {
