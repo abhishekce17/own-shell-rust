@@ -24,17 +24,17 @@
 #[allow(unused_imports)]
 use std::io::{self, Write};
 
-enum SHELL_BUILTINS {
+enum ShellBuiltins {
     ECHO,
     EXIT,
     TYPE
 }
 
-fn get_command(command: &str) -> Option<SHELL_BUILTINS> {
+fn get_command(command: &str) -> Option<ShellBuiltins> {
     match command {
-        "echo" => Some(SHELL_BUILTINS::ECHO),
-        "exit" => Some(SHELL_BUILTINS::EXIT),
-        "type" => Some(SHELL_BUILTINS::TYPE),
+        "echo" => Some(ShellBuiltins::ECHO),
+        "exit" => Some(ShellBuiltins::EXIT),
+        "type" => Some(ShellBuiltins::TYPE),
         _ => None,
     }
 }
@@ -47,7 +47,7 @@ fn main() {
         let mut command = String::new();
         io::stdin().read_line(&mut command).unwrap();
 
-        let parts = command.split_whitespace().collect::<Vec<_>>();
+        let parts: Vec<&str> = command.split_whitespace().collect::<Vec<_>>();
         if parts.is_empty() {
             println!("{}: command not found", command.trim());
             continue;
@@ -55,9 +55,9 @@ fn main() {
         
 
         match get_command(&parts[0]) {
-            Some(SHELL_BUILTINS::ECHO) => println!("{}", &command[4..].trim()),
-            Some(SHELL_BUILTINS::EXIT) => break,
-            Some(SHELL_BUILTINS::TYPE) => match get_command(&parts[1]) {
+            Some(ShellBuiltins::ECHO) => println!("{}", &command[4..].trim()),
+            Some(ShellBuiltins::EXIT) => break,
+            Some(ShellBuiltins::TYPE) => match get_command(&parts[1]) {
                 Some(_) => println!("{} is a shell builtin", parts[1]),
                 _ => println!("{}: not found", parts[1]),
                 
