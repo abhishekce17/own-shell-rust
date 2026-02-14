@@ -43,12 +43,18 @@ fn get_command(command: &str) -> Option<ShellBuiltins> {
 
 fn is_executable_command(command: &str){
     if let Some(path_env) = env::var_os("PATH"){
-        println!("{}: searching in PATH", path_env.to_string_lossy());
-        let exe_array: [&str; 3] = [ "exe" , "bat" , "cmd" ];
+        // println!("{}: searching in PATH", path_env.to_string_lossy());
+        let exe_array: [&str; 4] = [ "", "exe" , "bat" , "cmd" ];
         for dir in env::split_paths(&path_env){
             let full_path = dir.join(command);
-            if exe_array.iter().any(|&ext| full_path.with_extension(ext).exists()) {
-                println!("60 {}: found", full_path.display());
+            if exe_array.iter().any(|&ext| {
+                if ext.is_empty() {
+                    full_path.exists() && full_path.is_file() // Check the plain 'cat'
+                } else {
+                    full_path.with_extension(ext).exists()
+                }
+            }) {
+                println!("{} is {}", command, full_path.display());
                 return;
             }
         }
