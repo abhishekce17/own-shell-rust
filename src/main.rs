@@ -42,22 +42,14 @@ fn get_command(command: &str) -> Option<ShellBuiltins> {
     }
 }
 
-fn is_executable_windows(path: &Path) -> bool {
-    if let Some(ext) = path.extension() {
-        let ext_str = ext.to_str().unwrap_or("").to_lowercase();
-        matches!(ext_str.as_str(), "exe" | "bat" | "cmd")
-    } else {
-        false
-    }
-}
-
 fn is_executable_command(command: &str){
     if let Some(path_env) = env::var_os("PATH"){
+        let exe_array: [&str; 3] = [ "exe" , "bat" , "cmd" ];
         for dir in env::split_paths(&path_env){
             let full_path = dir.join(command);
-            if full_path.exists() && is_executable_windows(&full_path) {
-                println!("{} is {}", command, full_path.display());
-                break;
+            if exe_array.iter().any(|&ext| full_path.with_extension(ext).exists()) {
+                println!("60 {}: found", full_path.display());
+                return;
             }
         }
         println!("{}: not found", command);
