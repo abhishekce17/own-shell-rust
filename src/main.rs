@@ -24,6 +24,8 @@
 #[allow(unused_imports)]
 use std::io::{self, Write};
 use std::env;
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
 
 
 enum ShellBuiltins {
@@ -49,7 +51,22 @@ fn is_executable_command(command: &str){
             let full_path = dir.join(command);
             if exe_array.iter().any(|&ext| {
                 if ext.is_empty() {
-                    full_path.exists() && full_path.is_file() // Check the plain 'cat'
+                    if full_path.exists() && full_path.is_file() {
+                        if let Ok(metadata) = full_path.metadata() {
+                            #[cfg(unix)]
+                            {
+                                return metadata.permissions().mode() & 0o111 != 0;
+                            }
+                            #[cfg(not(unix))]
+                            {
+                                return false;
+                            }
+                        }else {
+                            return false;
+                        }
+                    }else {
+                        return false;
+                    }
                 } else {
                     full_path.with_extension(ext).exists()
                 }
