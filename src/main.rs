@@ -134,6 +134,10 @@ fn main() {
         match get_command(&parts[0]) {
             Some(ShellBuiltins::ECHO) => println!("{}", &command[4..].trim()),
             Some(ShellBuiltins::EXIT) => break,
+            Some(ShellBuiltins::PWD) => match env::current_dir() {
+                Ok(path) => println!("{}", path.display()),
+                Err(e) => println!("Error getting current directory: {}", e),
+            },
             Some(ShellBuiltins::TYPE) => match get_command(&parts[1]) {
                 Some(_) => println!("{} is a shell builtin", parts[1]),
                 _ => if let Some(full_path) = is_executable_command(&parts[1]) {
