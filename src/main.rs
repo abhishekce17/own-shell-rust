@@ -22,7 +22,6 @@
 
 
 #[allow(unused_imports)]
-#[warn(unused_variables)]
 use std::io::{self, Write};
 use std::{env, path::PathBuf};
 use std::process::Command;
@@ -54,7 +53,8 @@ fn is_executable_command(command: &str) -> Option<PathBuf> {
             if exe_array.iter().any(|&ext| {
                 if ext.is_empty() {
                     if full_path.exists() && full_path.is_file() {
-                        if let Ok(_metadata) = full_path.metadata() {
+                        #[allow(unused_variables)]
+                        if let Ok(metadata) = full_path.metadata() {
                             #[cfg(unix)]
                             {
                                 return metadata.permissions().mode() & 0o111 != 0;
@@ -83,8 +83,8 @@ fn is_executable_command(command: &str) -> Option<PathBuf> {
 }
 
 fn parse_args(input: &str) -> Vec<String> {
-    let mut args = Vec::new();
-    let mut current_arg = String::new();
+    let mut args: Vec<String> = Vec::new();
+    let mut current_arg: String = String::new();
     let mut quote_char: Option<char> = None; // None means we are NOT in quotes
 
     for c in input.chars() {
