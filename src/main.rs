@@ -32,7 +32,8 @@ use std::os::unix::fs::PermissionsExt;
 enum ShellBuiltins {
     ECHO,
     EXIT,
-    TYPE
+    TYPE,
+    PWD
 }
 
 fn get_command(command: &str) -> Option<ShellBuiltins> {
@@ -40,6 +41,7 @@ fn get_command(command: &str) -> Option<ShellBuiltins> {
         "echo" => Some(ShellBuiltins::ECHO),
         "exit" => Some(ShellBuiltins::EXIT),
         "type" => Some(ShellBuiltins::TYPE),
+        "pwd" => Some(ShellBuiltins::PWD),
         _ => None,
     }
 }
