@@ -22,6 +22,7 @@
 
 
 #[allow(unused_imports)]
+#[warn(unused_variables)]
 use std::io::{self, Write};
 use std::{env, path::PathBuf};
 use std::process::Command;
@@ -53,7 +54,7 @@ fn is_executable_command(command: &str) -> Option<PathBuf> {
             if exe_array.iter().any(|&ext| {
                 if ext.is_empty() {
                     if full_path.exists() && full_path.is_file() {
-                        if let Ok(metadata) = full_path.metadata() {
+                        if let Ok(_metadata) = full_path.metadata() {
                             #[cfg(unix)]
                             {
                                 return metadata.permissions().mode() & 0o111 != 0;
