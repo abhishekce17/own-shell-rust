@@ -23,7 +23,8 @@
 
 #[allow(unused_imports)]
 use std::io::{self, Write};
-use std::env;
+use std::{env, path::PathBuf};
+use std::process::Command;
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 
@@ -43,7 +44,7 @@ fn get_command(command: &str) -> Option<ShellBuiltins> {
     }
 }
 
-fn is_executable_command(command: &str){
+fn is_executable_command(command: &str) -> Option<PathBuf> {
     if let Some(path_env) = env::var_os("PATH"){
         // println!("{}: searching in PATH", path_env.to_string_lossy());
         let exe_array: [&str; 4] = [ "", "exe" , "bat" , "cmd" ];
@@ -71,16 +72,47 @@ fn is_executable_command(command: &str){
                     full_path.with_extension(ext).exists()
                 }
             }) {
-                println!("{} is {}", command, full_path.display());
-                return;
+                // println!("{} is {}", command, full_path.display());
+                return Some(full_path);
             }
         }
-        println!("{}: not found", command);
-        return;
+        return None;
     }
-    println!("{}: not found", command);
+    return None;
 }
 
+fn parse_args(input: &str) -> Vec<String> {
+    let mut args = Vec::new();
+    let mut current_arg = String::new();
+    let mut quote_char: Option<char> = None; // None means we are NOT in quotes
+
+    for c in input.chars() {
+        match (quote_char, c) {
+            (Some(q), c) if q == c => {
+                quote_char = None;
+            }
+            (None, '\'' | '"') => {
+                quote_char = Some(c);
+            }
+            (None, ' ') => {
+                if !current_arg.is_empty() {
+                    args.push(current_arg.clone());
+                    current_arg.clear();
+                }
+            }
+            (_, c) => {
+                current_arg.push(c);
+            }
+        }
+    }
+    
+    // Push the final argument if it exists
+    if !current_arg.is_empty() {
+        args.push(current_arg);
+    }
+    
+    args
+}
 
 fn main() {
     loop {
@@ -89,7 +121,7 @@ fn main() {
         let mut command = String::new();
         io::stdin().read_line(&mut command).unwrap();
 
-        let parts: Vec<&str> = command.split_whitespace().collect::<Vec<_>>();
+        let parts: Vec<String> = parse_args(command.trim());
         if parts.is_empty() {
             println!("{}: command not found", command.trim());
             continue;
@@ -101,10 +133,28 @@ fn main() {
             Some(ShellBuiltins::EXIT) => break,
             Some(ShellBuiltins::TYPE) => match get_command(&parts[1]) {
                 Some(_) => println!("{} is a shell builtin", parts[1]),
-                _ => is_executable_command(&parts[1]),
+                _ => if let Some(full_path) = is_executable_command(&parts[1]) {
+                     println!("{} is {}", &parts[1], full_path.display())
+                } else {
+                    println!("{}: not found", &parts[1])
+                },
                 
             },
-            _ => println!("{}: command not found", parts[0]),
+            _ => if let Some(_) = is_executable_command(&parts[0]) {
+                     let status: Result<std::process::ExitStatus, io::Error> = Command::new(&parts[0])
+                                    .args(&parts[1..])
+                                    .status();
+                    match status {
+                        Ok(status) => {
+                            if !status.success() {
+                                println!("{}: command exited with status {}", parts[0], status);
+                            }
+                        },
+                        Err(_) => println!("{}: command not found", parts[0]),
+                    }
+                } else {
+                    println!("{}: command not found", parts[0])
+                },
         }
     }
 }
