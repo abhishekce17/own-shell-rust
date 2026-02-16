@@ -135,7 +135,8 @@ fn cd_functionality(parts : &Vec<String>){
                     println!("too many arguments");
                 } else {
                     if parts[1].starts_with("/") {
-                        if Path::new(&parts[1].as_str()).is_absolute(){
+                        let new_path = Path::new(&parts[1]);
+                        if new_path.is_absolute() && new_path.exists() {
                         env::set_current_dir(&parts[1]).unwrap();
                         return;
                     }else {
