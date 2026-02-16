@@ -130,36 +130,40 @@ fn set_current_dit(parent_path : &Path, path: &str){
 }
 
 fn cd_functionality(parts : &Vec<String>){
-{
                 if parts.len() < 2 {
                 } else if parts.len() > 2 {
                     println!("too many arguments");
                 } else {
-                    if Path::new(&parts[1].as_str()).is_absolute(){
+                    if parts[1].starts_with("/") {
+                        if Path::new(&parts[1].as_str()).is_absolute(){
                         env::set_current_dir(&parts[1]).unwrap();
                         return;
-                    };
-                    let new_dir: Vec<&str>= parts[1].split("/").collect();
-                    match new_dir[0] {
-                        "~" => env::set_current_dir(env::home_dir().unwrap()).unwrap(),
-                        ".." => {
-                            if let Some(parent_dir) = env::current_dir().unwrap().parent(){
-                                env::set_current_dir(parent_dir).unwrap();
-                                if new_dir[1..].len() > 0{ 
-                                    // env::set_current_dir(parent_dir.join(new_dir[1..].join("/"))).unwrap();
-                                    set_current_dit(parent_dir, &new_dir[1..].join("/"));
+                    }else {
+                        println!("cd: {}: No such file or directory", &parts[1]);
+                        return;
+                    }
+                }else {
+                        let new_dir: Vec<&str>= parts[1].split("/").collect();
+                        match new_dir[0] {
+                            "~" => env::set_current_dir(env::home_dir().unwrap()).unwrap(),
+                            ".." => {
+                                if let Some(parent_dir) = env::current_dir().unwrap().parent(){
+                                    env::set_current_dir(parent_dir).unwrap();
+                                    if new_dir[1..].len() > 0{ 
+                                        // env::set_current_dir(parent_dir.join(new_dir[1..].join("/"))).unwrap();
+                                        set_current_dit(parent_dir, &new_dir[1..].join("/"));
+                                    };
                                 };
-                            };
-                        },
-                        "." => {if new_dir[1..].len() > 0 && let Ok(parent_dir) = env::current_dir(){ 
-                                    // env::set_current_dir(parent_dir.join(new_dir[1..].join("/"))).unwrap();
-                                    set_current_dit(parent_dir.as_path(), &new_dir[1..].join("/"));
-                                }}
-                        "" => if new_dir[1..].len() > 0 {println!("cd: {}: No such file or directory", &parts[1])},
-                        _ => println!("cd: {}: No such file or directory", &parts[1]),
+                            },
+                            "." => {if new_dir[1..].len() > 0 && let Ok(parent_dir) = env::current_dir(){ 
+                                        // env::set_current_dir(parent_dir.join(new_dir[1..].join("/"))).unwrap();
+                                        set_current_dit(parent_dir.as_path(), &new_dir[1..].join("/"));
+                                    }}
+                            "" => if new_dir[1..].len() > 0 {println!("cd: {}: No such file or directory", &parts[1])},
+                            _ => println!("cd: {}: No such file or directory", &parts[1]),
+                        };
                     };
                 }
-            }
 }
 
 fn type_functionality(parts : &Vec<String>){
