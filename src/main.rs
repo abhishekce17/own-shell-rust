@@ -25,6 +25,7 @@
 use std::io::{self, Write};
 use std::{env, path::PathBuf};
 use std::process::Command;
+use std::path::{Path};
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 
@@ -33,7 +34,8 @@ enum ShellBuiltins {
     ECHO,
     EXIT,
     TYPE,
-    PWD
+    PWD,
+    CD
 }
 
 fn get_command(command: &str) -> Option<ShellBuiltins> {
@@ -42,6 +44,7 @@ fn get_command(command: &str) -> Option<ShellBuiltins> {
         "exit" => Some(ShellBuiltins::EXIT),
         "type" => Some(ShellBuiltins::TYPE),
         "pwd" => Some(ShellBuiltins::PWD),
+        "cd" => Some(ShellBuiltins::CD),
         _ => None,
     }
 }
@@ -117,6 +120,77 @@ fn parse_args(input: &str) -> Vec<String> {
     args
 }
 
+fn set_current_dit(parent_path : &Path, path: &str){
+    let new_path: PathBuf = parent_path.join(path);
+    if new_path.exists(){
+        env::set_current_dir(new_path).unwrap();
+    }else {
+        println!("cd: {}: No such file or directory", &path);
+    }
+}
+
+fn cd_functionality(parts : &Vec<String>){
+{
+                if parts.len() < 2 {
+                } else if parts.len() > 2 {
+                    println!("too many arguments");
+                } else {
+                    if Path::new(&parts[1].as_str()).is_absolute(){
+                        env::set_current_dir(&parts[1]).unwrap();
+                        return;
+                    };
+                    let new_dir: Vec<&str>= parts[1].split("/").collect();
+                    match new_dir[0] {
+                        "~" => env::set_current_dir(env::home_dir().unwrap()).unwrap(),
+                        ".." => {
+                            if let Some(parent_dir) = env::current_dir().unwrap().parent(){
+                                env::set_current_dir(parent_dir).unwrap();
+                                if new_dir[1..].len() > 0{ 
+                                    // env::set_current_dir(parent_dir.join(new_dir[1..].join("/"))).unwrap();
+                                    set_current_dit(parent_dir, &new_dir[1..].join("/"));
+                                };
+                            };
+                        },
+                        "." => {if new_dir[1..].len() > 0 && let Ok(parent_dir) = env::current_dir(){ 
+                                    // env::set_current_dir(parent_dir.join(new_dir[1..].join("/"))).unwrap();
+                                    set_current_dit(parent_dir.as_path(), &new_dir[1..].join("/"));
+                                }}
+                        "" => if new_dir[1..].len() > 0 {println!("cd: {}: No such file or directory", &parts[1])},
+                        _ => println!("cd: {}: No such file or directory", &parts[1]),
+                    };
+                }
+            }
+}
+
+fn type_functionality(parts : &Vec<String>){
+        match get_command(&parts[1]) {
+                Some(_) => println!("{} is a shell builtin", parts[1]),
+                _ => if let Some(full_path) = is_executable_command(&parts[1]) {
+                     println!("{} is {}", &parts[1], full_path.display())
+                } else {
+                    println!("{}: not found", &parts[1])
+                }
+}
+}
+
+fn not_shell_buitin(parts : &Vec<String>){
+if let Some(_) = is_executable_command(&parts[0]) {
+                     let status: Result<std::process::ExitStatus, io::Error> = Command::new(&parts[0])
+                                    .args(&parts[1..])
+                                    .status();
+                    match status {
+                        Ok(status) => {
+                            if !status.success() {
+                                println!("{}: command exited with status {}", parts[0], status);
+                            }
+                        },
+                        Err(_) => println!("{}: command not found", parts[0]),
+                    }
+                } else {
+                    println!("{}: command not found", parts[0])
+                }
+}
+
 fn main() {
     loop {
         print!("$ ");
@@ -138,30 +212,9 @@ fn main() {
                 Ok(path) => println!("{}", path.display()),
                 Err(e) => println!("Error getting current directory: {}", e),
             },
-            Some(ShellBuiltins::TYPE) => match get_command(&parts[1]) {
-                Some(_) => println!("{} is a shell builtin", parts[1]),
-                _ => if let Some(full_path) = is_executable_command(&parts[1]) {
-                     println!("{} is {}", &parts[1], full_path.display())
-                } else {
-                    println!("{}: not found", &parts[1])
-                },
-                
-            },
-            _ => if let Some(_) = is_executable_command(&parts[0]) {
-                     let status: Result<std::process::ExitStatus, io::Error> = Command::new(&parts[0])
-                                    .args(&parts[1..])
-                                    .status();
-                    match status {
-                        Ok(status) => {
-                            if !status.success() {
-                                println!("{}: command exited with status {}", parts[0], status);
-                            }
-                        },
-                        Err(_) => println!("{}: command not found", parts[0]),
-                    }
-                } else {
-                    println!("{}: command not found", parts[0])
-                },
+            Some(ShellBuiltins::CD) => cd_functionality(&parts),
+            Some(ShellBuiltins::TYPE) => type_functionality(&parts),
+            _ => not_shell_buitin(&parts),
         }
     }
 }
