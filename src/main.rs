@@ -90,7 +90,9 @@ fn parse_args(input: &str) -> Vec<String> {
     let mut current_arg: String = String::new();
     let mut quote_char: Option<char> = None; // None means we are NOT in quotes
 
-    for c in input.chars() {
+    let mut iter = input.chars().peekable();
+
+    while let Some(c) = iter.next() {
         match (quote_char, c) {
             (Some(q), c) if q == c => {
                 quote_char = None;
@@ -98,10 +100,15 @@ fn parse_args(input: &str) -> Vec<String> {
             (None, '\'' | '"') => {
                 quote_char = Some(c);
             }
-            (None, ' ') => {
+            (None, ' ') | (None, '\t') => {
                 if !current_arg.is_empty() {
                     args.push(current_arg.clone());
                     current_arg.clear();
+                }
+            }
+            (_, '\\') => {
+                if let Some(next_char) = iter.next() {
+                    current_arg.push(next_char);
                 }
             }
             (_, c) => {
@@ -109,8 +116,6 @@ fn parse_args(input: &str) -> Vec<String> {
             }
         }
     }
-
-    // Push the final argument if it exists
     if !current_arg.is_empty() {
         args.push(current_arg);
     }
