@@ -89,21 +89,15 @@ fn parse_args(input: &str) -> Vec<String> {
     let mut args: Vec<String> = Vec::new();
     let mut current_arg: String = String::new();
     let mut quote_char: Option<char> = None; // None means we are NOT in quotes
-    let mut inside_quotes = false;
 
     let mut iter: std::iter::Peekable<std::str::Chars<'_>> = input.chars().peekable();
 
     while let Some(c) = iter.next() {
-        if inside_quotes && c != '\'' {
-            current_arg.push(c);
-            continue;
-        }
         match (quote_char, c) {
             (Some(q), c) if q == c => {
                 quote_char = None;
             }
             (None, '\'' | '"') => {
-                inside_quotes = !inside_quotes;
                 quote_char = Some(c);
             }
             (None, ' ') | (None, '\t') => {
@@ -112,7 +106,7 @@ fn parse_args(input: &str) -> Vec<String> {
                     current_arg.clear();
                 }
             }
-            (_, '\\') => {
+            (None | Some('"'), '\\') => {
                 if let Some(next_char) = iter.next() {
                     current_arg.push(next_char);
                 }
