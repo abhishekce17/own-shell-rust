@@ -48,14 +48,12 @@ fn get_command(command: &str) -> Option<ShellBuiltins> {
     }
 }
 
-fn execute_with_redirection(cmd: &str, args: &str, file_name: &str) -> Result<()> {
+fn execute_with_redirection(cmd: &str, args: &[String], file_name: &str) -> Result<()> {
     // Create the file
     let file = File::create(file_name)?;
 
-    // 3. We removed `let mut child =` because .status() runs and waits all at once.
-    // We don't need to save the child to a variable anymore!
     Command::new(cmd)
-        .arg(args)
+        .args(args)
         .stdout(Stdio::from(file)) // OS pipes output directly to disk
         .status()?; // The ? automatically converts io::Error into anyhow::Error if it fails
 
@@ -124,6 +122,15 @@ fn parse_args(input: &str) -> Vec<String> {
                     current_arg.push(next_char);
                 }
             }
+            // (_, '>') => {
+            //     execute_with_redirection(
+            //         &args[0],
+            //         &args[1..],
+            //         &input[input.find('>').unwrap() + 1..].trim(),
+            //     )
+            //     .unwrap();
+            //     return [].to_vec();
+            // }
             (_, c) => {
                 current_arg.push(c);
             }
@@ -191,41 +198,62 @@ fn cd_functionality(parts: &Vec<String>) {
     }
 }
 
-fn type_functionality(parts: &Vec<String>) {
+fn pwd_functionality(stream: &mut dyn Write) {
+    match env::current_dir() {
+        Ok(path) => writeln!(stream, "{}", path.display()).unwrap(),
+        Err(e) => writeln!(stream, "Error getting current directory: {}", e).unwrap(),
+    }
+}
+
+fn type_functionality(parts: &Vec<String>, stream: &mut dyn Write) {
     match get_command(&parts[1]) {
-        Some(_) => println!("{} is a shell builtin", parts[1]),
+        Some(_) => writeln!(stream, "{} is a shell builtin", parts[1]).unwrap(),
         _ => {
             if let Some(full_path) = is_executable_command(&parts[1]) {
-                println!("{} is {}", &parts[1], full_path.display())
+                writeln!(stream, "{} is {}", &parts[1], full_path.display()).unwrap();
             } else {
-                println!("{}: not found", &parts[1])
+                writeln!(stream, "{}: not found", &parts[1]).unwrap();
             }
         }
     }
 }
 
-fn not_shell_buitin(parts: &Vec<String>) {
-    if let Some(_) = is_executable_command(&parts[0]) {
-        let status: Result<std::process::ExitStatus, io::Error> =
-            Command::new(&parts[0]).args(&parts[1..]).status();
-        match status {
-            Ok(status) => {
-                if !status.success() {
-                    println!("{}: command exited with status {}", parts[0], status);
+fn not_shell_buitin(parts: &Vec<String>, redirect_file: &Option<String>) {
+    match redirect_file {
+        Some(file) => {
+            if let Err(_) = execute_with_redirection(&parts[0], &parts[1..], file) {
+                println!("{}: command not found", parts[0]);
+            }
+        }
+        None => {
+            if let Some(_) = is_executable_command(&parts[0]) {
+                let status: Result<std::process::ExitStatus, io::Error> =
+                    Command::new(&parts[0]).args(&parts[1..]).status();
+                match status {
+                    Ok(status) => {
+                        if !status.success() {
+                            println!("{}: command exited with status {}", parts[0], status);
+                        }
+                    }
+                    Err(_) => println!("{}: command not found", parts[0]),
                 }
+            } else {
+                println!("{}: command not found", parts[0])
             }
-            Err(_) => println!("{}: command not found", parts[0]),
         }
-    } else {
-        println!("{}: command not found", parts[0])
     }
 }
 
-fn echo_functionality(parts: &[String]) {
-    match parts[1].as_str() {
-        ">" => execute_with_redirection("echo", &parts[0..1].join(" "), &parts[2]).unwrap(),
-        _ => println!("{}", parts.join(" ")),
-    }
+fn echo_functionality(parts: &[String], stream: &mut dyn Write) {
+    writeln!(stream, "{}", parts.join(" ")).unwrap();
+}
+
+fn create_stream(redirect_file: &Option<String>) -> Box<dyn Write> {
+    let stream: Box<dyn Write> = match &redirect_file {
+        Some(file) => Box::new(File::create(file).unwrap()),
+        None => Box::new(io::stdout()),
+    };
+    return stream;
 }
 
 fn main() {
@@ -235,22 +263,28 @@ fn main() {
         let mut command = String::new();
         io::stdin().read_line(&mut command).unwrap();
 
-        let parts: Vec<String> = parse_args(command.trim());
+        let mut parts: Vec<String> = parse_args(command.trim());
         if parts.is_empty() {
-            println!("{}: command not found", command.trim());
+            // println!("{}: command not found", command.trim());
             continue;
         }
 
+        let mut redirect_file: Option<String> = None;
+        if let Some(pos) = parts.iter().position(|p| p == ">") {
+            if pos + 1 < parts.len() {
+                redirect_file = Some(parts[pos + 1].clone());
+                parts.truncate(pos); // Clean the parts array!
+            }
+        }
+        let mut stream = create_stream(&redirect_file);
+
         match get_command(&parts[0]) {
-            Some(ShellBuiltins::ECHO) => echo_functionality(&parts[1..]),
+            Some(ShellBuiltins::ECHO) => echo_functionality(&parts[1..], &mut *stream),
             Some(ShellBuiltins::EXIT) => break,
-            Some(ShellBuiltins::PWD) => match env::current_dir() {
-                Ok(path) => println!("{}", path.display()),
-                Err(e) => println!("Error getting current directory: {}", e),
-            },
+            Some(ShellBuiltins::PWD) => pwd_functionality(&mut *stream),
             Some(ShellBuiltins::CD) => cd_functionality(&parts),
-            Some(ShellBuiltins::TYPE) => type_functionality(&parts),
-            _ => not_shell_buitin(&parts),
+            Some(ShellBuiltins::TYPE) => type_functionality(&parts, &mut *stream),
+            _ => not_shell_buitin(&parts, &redirect_file),
         }
     }
 }
