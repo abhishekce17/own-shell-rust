@@ -19,13 +19,14 @@
 //         }
 //     }
 // }
-
+use anyhow::Result;
+use std::fs::File;
 #[allow(unused_imports)]
 use std::io::{self, Write};
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
-use std::process::Command;
+use std::process::{Command, Stdio};
 use std::{env, path::PathBuf};
 
 enum ShellBuiltins {
@@ -47,9 +48,22 @@ fn get_command(command: &str) -> Option<ShellBuiltins> {
     }
 }
 
+fn execute_with_redirection(cmd: &str, args: &str, file_name: &str) -> Result<()> {
+    // Create the file
+    let file = File::create(file_name)?;
+
+    // 3. We removed `let mut child =` because .status() runs and waits all at once.
+    // We don't need to save the child to a variable anymore!
+    Command::new(cmd)
+        .arg(args)
+        .stdout(Stdio::from(file)) // OS pipes output directly to disk
+        .status()?; // The ? automatically converts io::Error into anyhow::Error if it fails
+
+    return Ok(());
+}
+
 fn is_executable_command(command: &str) -> Option<PathBuf> {
     if let Some(path_env) = env::var_os("PATH") {
-        // println!("{}: searching in PATH", path_env.to_string_lossy());
         let exe_array: [&str; 4] = ["", "exe", "bat", "cmd"];
         for dir in env::split_paths(&path_env) {
             let full_path = dir.join(command);
@@ -76,7 +90,6 @@ fn is_executable_command(command: &str) -> Option<PathBuf> {
                     full_path.with_extension(ext).exists()
                 }
             }) {
-                // println!("{} is {}", command, full_path.display());
                 return Some(full_path);
             }
         }
@@ -208,8 +221,11 @@ fn not_shell_buitin(parts: &Vec<String>) {
     }
 }
 
-fn echo_functionality(parts: &String) {
-    println!("{}", parts);
+fn echo_functionality(parts: &[String]) {
+    match parts[1].as_str() {
+        ">" => execute_with_redirection("echo", &parts[0..1].join(" "), &parts[2]).unwrap(),
+        _ => println!("{}", parts.join(" ")),
+    }
 }
 
 fn main() {
@@ -226,7 +242,7 @@ fn main() {
         }
 
         match get_command(&parts[0]) {
-            Some(ShellBuiltins::ECHO) => echo_functionality(&parts[1..].join(" ")),
+            Some(ShellBuiltins::ECHO) => echo_functionality(&parts[1..]),
             Some(ShellBuiltins::EXIT) => break,
             Some(ShellBuiltins::PWD) => match env::current_dir() {
                 Ok(path) => println!("{}", path.display()),
