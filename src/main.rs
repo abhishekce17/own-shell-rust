@@ -270,7 +270,7 @@ fn main() {
         }
 
         let mut redirect_file: Option<String> = None;
-        if let Some(pos) = parts.iter().position(|p| p == ">") {
+        if let Some(pos) = parts.iter().position(|p| p == ">" || p == "1>") {
             if pos + 1 < parts.len() {
                 redirect_file = Some(parts[pos + 1].clone());
                 parts.truncate(pos); // Clean the parts array!
