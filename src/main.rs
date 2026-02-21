@@ -1,24 +1,3 @@
-// use std::io::{self, Write};
-
-// fn main() {
-//     // TODO: Uncomment the code below to pass the first stage
-//     let mut command : String = String::new();
-//     // let mut followup : String = String::new();
-//     loop {
-//         command.clear();
-//         print!("$ ");
-//         io::stdout().flush().unwrap();
-//         io::stdin().read_line(&mut command).unwrap();
-//         if command.trim().len() == 0 {continue;}
-//         else if command.trim() == "exit" {break;}
-//         else if command[0..4].trim() == "echo" {
-//             print!("{}\n", command[4..].trim());
-//         }
-//         else {
-//             print!("{}: command not found\n", command.trim());
-//         }
-//     }
-// }
 use anyhow::Result;
 use std::fs::File;
 #[allow(unused_imports)]
@@ -48,15 +27,23 @@ fn get_command(command: &str) -> Option<ShellBuiltins> {
     }
 }
 
-fn execute_with_redirection(cmd: &str, args: &[String], file_name: &str) -> Result<()> {
+fn execute_with_redirection(
+    cmd: &str,
+    args: &[String],
+    file_name: &str,
+    redirect_err: bool,
+) -> Result<()> {
     // Create the file
     let file = File::create(file_name)?;
 
-    Command::new(cmd)
-        .args(args)
-        .stdout(Stdio::from(file)) // OS pipes output directly to disk
-        .status()?; // The ? automatically converts io::Error into anyhow::Error if it fails
+    let mut cmd: Command = Command::new(cmd); // The ? automatically converts io::Error into anyhow::Error if it fails
+    if redirect_err {
+        cmd.args(args).stderr(Stdio::from(file));
+    } else {
+        cmd.args(args).stdout(Stdio::from(file));
+    }
 
+    cmd.status()?;
     return Ok(());
 }
 
@@ -122,15 +109,6 @@ fn parse_args(input: &str) -> Vec<String> {
                     current_arg.push(next_char);
                 }
             }
-            // (_, '>') => {
-            //     execute_with_redirection(
-            //         &args[0],
-            //         &args[1..],
-            //         &input[input.find('>').unwrap() + 1..].trim(),
-            //     )
-            //     .unwrap();
-            //     return [].to_vec();
-            // }
             (_, c) => {
                 current_arg.push(c);
             }
@@ -218,10 +196,10 @@ fn type_functionality(parts: &Vec<String>, stream: &mut dyn Write) {
     }
 }
 
-fn not_shell_buitin(parts: &Vec<String>, redirect_file: &Option<String>) {
+fn not_shell_buitin(parts: &Vec<String>, redirect_file: &Option<String>, redirect_err: bool) {
     match redirect_file {
         Some(file) => {
-            if let Err(_) = execute_with_redirection(&parts[0], &parts[1..], file) {
+            if let Err(_) = execute_with_redirection(&parts[0], &parts[1..], file, redirect_err) {
                 println!("{}: command not found", parts[0]);
             }
         }
@@ -230,10 +208,10 @@ fn not_shell_buitin(parts: &Vec<String>, redirect_file: &Option<String>) {
                 let status: Result<std::process::ExitStatus, io::Error> =
                     Command::new(&parts[0]).args(&parts[1..]).status();
                 match status {
-                    Ok(status) => {
-                        if !status.success() {
-                            println!("{}: command exited with status {}", parts[0], status);
-                        }
+                    Ok(_) => {
+                        // if !status.success() {
+                        //     println!("{}: command exited with status {}", parts[0], status);
+                        // }
                     }
                     Err(_) => println!("{}: command not found", parts[0]),
                 }
@@ -248,10 +226,10 @@ fn echo_functionality(parts: &[String], stream: &mut dyn Write) {
     writeln!(stream, "{}", parts.join(" ")).unwrap();
 }
 
-fn create_stream(redirect_file: &Option<String>) -> Box<dyn Write> {
-    let stream: Box<dyn Write> = match &redirect_file {
-        Some(file) => Box::new(File::create(file).unwrap()),
-        None => Box::new(io::stdout()),
+fn create_stream(redirect_file: &Option<String>, redirect_err: bool) -> Box<dyn Write> {
+    let stream: Box<dyn Write> = match (&redirect_file, redirect_err) {
+        (Some(file), false) => Box::new(File::create(file).unwrap()),
+        (_, _) => Box::new(io::stdout()),
     };
     return stream;
 }
@@ -270,13 +248,20 @@ fn main() {
         }
 
         let mut redirect_file: Option<String> = None;
-        if let Some(pos) = parts.iter().position(|p| p == ">" || p == "1>") {
+        let mut redirect_err: bool = false;
+        let pos: Option<usize> = parts
+            .iter()
+            .position(|p| p == ">" || p == "1>" || p == "2>");
+        if let Some(pos) = pos {
+            if parts[pos] == "2>" {
+                redirect_err = true;
+            }
             if pos + 1 < parts.len() {
                 redirect_file = Some(parts[pos + 1].clone());
                 parts.truncate(pos); // Clean the parts array!
             }
         }
-        let mut stream = create_stream(&redirect_file);
+        let mut stream: Box<dyn Write> = create_stream(&redirect_file, redirect_err);
 
         match get_command(&parts[0]) {
             Some(ShellBuiltins::ECHO) => echo_functionality(&parts[1..], &mut *stream),
@@ -284,7 +269,7 @@ fn main() {
             Some(ShellBuiltins::PWD) => pwd_functionality(&mut *stream),
             Some(ShellBuiltins::CD) => cd_functionality(&parts),
             Some(ShellBuiltins::TYPE) => type_functionality(&parts, &mut *stream),
-            _ => not_shell_buitin(&parts, &redirect_file),
+            _ => not_shell_buitin(&parts, &redirect_file, redirect_err),
         }
     }
 }
