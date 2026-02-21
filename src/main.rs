@@ -35,7 +35,6 @@ fn execute_with_redirection(
     is_append: bool,
 ) -> Result<()> {
     // Create the file
-    println!("{}", is_append);
     let file = File::options()
         .create(true)
         .write(true)
