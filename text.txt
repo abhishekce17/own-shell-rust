@@ -1,0 +1,10 @@
+Cargo.lock
+Cargo.toml
+codecrafters.yml
+README.md
+src
+target
+text.txt
+your_program.sh
+C:\Users\Abhishek\Drive-D\code-crafter\codecrafters-shell-rust
+C:\Users\Abhishek\Drive-D\code-crafter\codecrafters-shell-rust
