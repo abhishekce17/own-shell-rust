@@ -226,10 +226,10 @@ fn echo_functionality(parts: &[String], stream: &mut dyn Write) {
     writeln!(stream, "{}", parts.join(" ")).unwrap();
 }
 
-fn create_stream(redirect_file: &Option<String>, redirect_err: bool) -> Box<dyn Write> {
-    let stream: Box<dyn Write> = match (&redirect_file, redirect_err) {
-        (Some(file), false) => Box::new(File::create(file).unwrap()),
-        (_, _) => Box::new(io::stdout()),
+fn create_stream(redirect_file: &Option<String>) -> Box<dyn Write> {
+    let stream: Box<dyn Write> = match &redirect_file {
+        Some(file) => Box::new(File::create(file).unwrap()),
+        None => Box::new(io::stdout()),
     };
     return stream;
 }
@@ -261,7 +261,7 @@ fn main() {
                 parts.truncate(pos); // Clean the parts array!
             }
         }
-        let mut stream: Box<dyn Write> = create_stream(&redirect_file, redirect_err);
+        let mut stream: Box<dyn Write> = create_stream(&redirect_file);
 
         match get_command(&parts[0]) {
             Some(ShellBuiltins::ECHO) => echo_functionality(&parts[1..], &mut *stream),
