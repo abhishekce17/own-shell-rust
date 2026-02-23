@@ -65,17 +65,29 @@ fn read_input_with_autocomplete() -> anyhow::Result<String> {
                 }
                 KeyCode::Char(c) => {
                     // Check for Ctrl+C
-                    if key.modifiers.contains(KeyModifiers::CONTROL) && c == 'c' {
-                        print!("^C\r\n");
-                        input.clear();
-                        break;
+                    if key.modifiers.contains(KeyModifiers::CONTROL) {
+                        match c {
+                            'c' => {
+                                print!("^C\r\n");
+                                input.clear();
+                                break;
+                            }
+                            'd' => {
+                                disable_raw_mode()?;
+                                std::process::exit(0);
+                            }
+                            // THE CODECRAFTERS FIX: Treat Ctrl+J (\n) and Ctrl+M (\r) as Enter
+                            'j' | 'm' => {
+                                print!("\r\n");
+                                break;
+                            }
+                            // Ignore any other weird control characters the tester sends
+                            _ => {}
+                        }
+                    } else {
+                        // It's a normal character, so we push it to the string
+                        input.push(c);
                     }
-                    if key.modifiers.contains(KeyModifiers::CONTROL) && c == 'd' {
-                        disable_raw_mode()?;
-                        std::process::exit(0);
-                    }
-
-                    input.push(c);
                 }
                 KeyCode::Tab => {
                     // Find the first builtin that starts with what the user typed
