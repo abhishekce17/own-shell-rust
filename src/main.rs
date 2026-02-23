@@ -50,6 +50,7 @@ fn read_input_with_autocomplete() -> Result<String> {
 
     let mut input = String::new();
     let mut cursor_pos = 0; // Track exactly where the blinking cursor should be
+    let mut tab_pressed_count: i32 = 0;
 
     loop {
         // 2. FLICKER-FREE RENDER LOOP
@@ -126,6 +127,8 @@ fn read_input_with_autocomplete() -> Result<String> {
 
                 // --- AUTOCOMPLETION ---
                 KeyCode::Tab => {
+                    tab_pressed_count += 1;
+                    stdout.flush()?;
                     // 1. Try to match Builtins first
                     let builtin_match = ShellBuiltins::ALL_STRINGS
                         .iter()
@@ -136,14 +139,34 @@ fn read_input_with_autocomplete() -> Result<String> {
                         input.push(' ');
                         cursor_pos = input.len();
                     } else {
-                        if let Some(path_match) = find_single_match_in_path(&input) {
-                            input = path_match;
-                            input.push(' ');
-                            cursor_pos = input.len();
-                        } else {
-                            // 3. Truly no match found
-                            print!("\x07");
-                            io::stdout().flush()?;
+                        match find_all_match_in_path(&input) {
+                            Some(matches) => {
+                                if matches.len() == 1 {
+                                    input = matches[0].clone();
+                                    input.push(' ');
+                                    cursor_pos = input.len();
+                                    tab_pressed_count = 0;
+                                } else if matches.len() > 1 && tab_pressed_count == 2 {
+                                    println!("\r\n{}", matches.join("  "));
+                                    // Re-render the prompt and current input after showing options
+                                    queue!(
+                                        stdout,
+                                        cursor::MoveToColumn(0),
+                                        Clear(ClearType::CurrentLine),
+                                        Print(format!("$ {}", input)),
+                                        cursor::MoveToColumn((cursor_pos + 2) as u16)
+                                    )?;
+                                    stdout.flush()?;
+                                    tab_pressed_count = 0; // Reset the count after showing options
+                                } else {
+                                    print!("\x07");
+                                    io::stdout().flush()?;
+                                }
+                            }
+                            None => {
+                                print!("\x07");
+                                io::stdout().flush()?;
+                            }
                         }
                     }
                 }
@@ -157,11 +180,12 @@ fn read_input_with_autocomplete() -> Result<String> {
     Ok(input)
 }
 
-fn find_single_match_in_path(partial_input: &str) -> Option<String> {
+fn find_all_match_in_path(partial_input: &str) -> Option<Vec<String>> {
     if partial_input.is_empty() {
         return None;
     }
     if let Some(path_env) = env::var_os("PATH") {
+        let mut matches: Vec<String> = Vec::new();
         for dir in env::split_paths(&path_env) {
             if let Ok(entries) = std::fs::read_dir(dir) {
                 for entry in entries.flatten() {
@@ -170,11 +194,14 @@ fn find_single_match_in_path(partial_input: &str) -> Option<String> {
                             && EXE_ARRAY.iter().any(|&ext| name.ends_with(ext))
                             && is_executable_path(&entry.path())
                         {
-                            return Some(name.to_string());
+                            matches.push(name.to_string());
                         }
                     }
                 }
             }
+        }
+        if !matches.is_empty() {
+            return Some(matches);
         }
     }
     return None;
@@ -444,7 +471,6 @@ fn main() {
                 parts.truncate(pos);
             }
         }
-        find_single_match_in_path(&parts[0]);
 
         match get_command(&parts[0]) {
             Some(builtin) => {
