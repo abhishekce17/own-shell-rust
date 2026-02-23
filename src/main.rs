@@ -2,7 +2,8 @@ use anyhow::Result;
 use crossterm::{
     cursor,
     event::{self, Event, KeyCode, KeyEventKind, KeyModifiers},
-    execute,
+    queue,
+    style::Print,
     terminal::{Clear, ClearType, disable_raw_mode, enable_raw_mode},
 };
 use std::fs::{File, OpenOptions};
@@ -36,35 +37,62 @@ impl ShellBuiltins {
     const ALL_STRINGS: [&'static str; 5] = ["echo", "exit", "type", "pwd", "cd"];
 }
 
-fn read_input_with_autocomplete() -> anyhow::Result<String> {
+fn read_input_with_autocomplete() -> Result<String> {
+    // 1. Enter raw mode just for typing
     enable_raw_mode()?;
     let mut stdout = io::stdout();
+
     let mut input = String::new();
+    let mut cursor_pos = 0; // Track exactly where the blinking cursor should be
 
     loop {
-        execute!(
+        // 2. FLICKER-FREE RENDER LOOP
+        // We queue all drawing commands in memory first to prevent screen tearing
+        queue!(
             stdout,
-            cursor::MoveToColumn(0),
-            Clear(ClearType::CurrentLine)
+            cursor::MoveToColumn(0),                       // Move to far left
+            Clear(ClearType::CurrentLine),                 // Erase the old text
+            Print(format!("$ {}", input)),                 // Draw the prompt and text
+            cursor::MoveToColumn((cursor_pos + 2) as u16) // Move cursor back to the editing position (+2 for "$ ")
         )?;
-        print!("$ {}", input);
+        // Send the entire frame to the monitor instantly
         stdout.flush()?;
 
+        // 3. WAIT FOR KEYPRESS
         if let Event::Key(key) = event::read()? {
+            // Ignore key releases (Windows compatibility)
             if key.kind != KeyEventKind::Press {
                 continue;
             }
 
             match key.code {
+                // --- SUBMITTING ---
                 KeyCode::Enter => {
                     print!("\r\n");
                     break;
                 }
-                KeyCode::Backspace => {
-                    input.pop();
+
+                // --- ARROW KEYS (NAVIGATION) ---
+                KeyCode::Left => {
+                    if cursor_pos > 0 {
+                        cursor_pos -= 1;
+                    }
                 }
+                KeyCode::Right => {
+                    if cursor_pos < input.len() {
+                        cursor_pos += 1;
+                    }
+                }
+
+                // --- EDITING ---
+                KeyCode::Backspace => {
+                    if cursor_pos > 0 {
+                        input.remove(cursor_pos - 1);
+                        cursor_pos -= 1;
+                    }
+                }
+
                 KeyCode::Char(c) => {
-                    // Check for Ctrl+C
                     if key.modifiers.contains(KeyModifiers::CONTROL) {
                         match c {
                             'c' => {
@@ -76,31 +104,51 @@ fn read_input_with_autocomplete() -> anyhow::Result<String> {
                                 disable_raw_mode()?;
                                 std::process::exit(0);
                             }
-                            // THE CODECRAFTERS FIX: Treat Ctrl+J (\n) and Ctrl+M (\r) as Enter
+                            // The CodeCrafters Fix: Treat Ctrl+J (\n) and Ctrl+M (\r) as Enter
                             'j' | 'm' => {
                                 print!("\r\n");
                                 break;
                             }
-                            // Ignore any other weird control characters the tester sends
-                            _ => {}
+                            _ => {} // Ignore other weird control chars
                         }
                     } else {
-                        // It's a normal character, so we push it to the string
-                        input.push(c);
+                        // Insert the character EXACTLY where the cursor is
+                        input.insert(cursor_pos, c);
+                        cursor_pos += 1;
                     }
                 }
+
+                // --- AUTOCOMPLETION ---
                 KeyCode::Tab => {
-                    // Find the first builtin that starts with what the user typed
-                    if let Some(matched) = ShellBuiltins::ALL_STRINGS
+                    // 1. Try to match Builtins first
+                    let builtin_match = ShellBuiltins::ALL_STRINGS
                         .iter()
-                        .find(|&&cmd| cmd.starts_with(&input))
-                    {
+                        .find(|&&cmd| cmd.starts_with(&input));
+
+                    if let Some(matched) = builtin_match {
                         input = matched.to_string();
-                        // Add a trailing space so they can immediately type arguments
                         input.push(' ');
+                        cursor_pos = input.len();
+                    } else {
+                        // 2. If no builtin matches, try to match commands in $PATH
+                        // We use the function YOU already wrote!
+                        if let Some(path_match) = is_executable_command(&input) {
+                            // Get just the filename (e.g., "ls") from the full path
+                            if let Some(file_name) = path_match.file_name().and_then(|n| n.to_str())
+                            {
+                                input = file_name.to_string();
+                                input.push(' ');
+                                cursor_pos = input.len();
+                            }
+                        } else {
+                            // 3. Truly no match found
+                            print!("\x07");
+                            io::stdout().flush()?;
+                        }
                     }
                 }
-                _ => {}
+
+                _ => {} // Ignore any other keys
             }
         }
     }
