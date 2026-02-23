@@ -211,18 +211,17 @@ fn find_all_match_in_path(partial_input: &str) -> Option<Vec<String>> {
             }
         }
         if !matches.is_empty() {
+            matches.sort();
             return Some(matches);
         }
     }
     return None;
 }
 
-fn longest_common_prefix(matches: &Vec<String>) -> String {
-    if matches.is_empty() {
+fn longest_common_prefix(strings: &Vec<String>) -> String {
+    if strings.is_empty() {
         return "".to_string();
     }
-    let mut strings = matches.clone();
-    strings.sort();
     let first_match: Vec<char> = strings[0].chars().collect();
     let last_match: Vec<char> = strings[strings.len() - 1].chars().collect();
     let mut lcp: Vec<char> = Vec::new();
