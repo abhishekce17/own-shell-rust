@@ -1,4 +1,10 @@
 use anyhow::Result;
+use crossterm::{
+    cursor,
+    event::{self, Event, KeyCode, KeyEventKind, KeyModifiers},
+    execute,
+    terminal::{Clear, ClearType, disable_raw_mode, enable_raw_mode},
+};
 use std::fs::{File, OpenOptions};
 #[allow(unused_imports)]
 use std::io::{self, Write};
@@ -7,7 +13,6 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::process::{Command, Stdio};
 use std::{env, path::PathBuf};
-
 enum ShellBuiltins {
     ECHO,
     EXIT,
@@ -25,6 +30,72 @@ fn get_command(command: &str) -> Option<ShellBuiltins> {
         "cd" => Some(ShellBuiltins::CD),
         _ => None,
     }
+}
+
+impl ShellBuiltins {
+    const ALL_STRINGS: [&'static str; 5] = ["echo", "exit", "type", "pwd", "cd"];
+}
+
+fn read_input_with_autocomplete() -> anyhow::Result<String> {
+    enable_raw_mode()?;
+    let mut stdout = io::stdout();
+    let mut input = String::new();
+
+    loop {
+        execute!(
+            stdout,
+            cursor::MoveToColumn(0),
+            Clear(ClearType::CurrentLine)
+        )?;
+        print!("$ {}", input);
+        stdout.flush()?;
+
+        if let Event::Key(key) = event::read()? {
+            if key.kind != KeyEventKind::Press {
+                continue;
+            }
+
+            match key.code {
+                KeyCode::Enter => {
+                    print!("\r\n");
+                    break;
+                }
+                KeyCode::Backspace => {
+                    input.pop();
+                }
+                KeyCode::Char(c) => {
+                    // Check for Ctrl+C
+                    if key.modifiers.contains(KeyModifiers::CONTROL) && c == 'c' {
+                        print!("^C\r\n");
+                        input.clear();
+                        break;
+                    }
+                    if key.modifiers.contains(KeyModifiers::CONTROL) && c == 'd' {
+                        disable_raw_mode()?;
+                        std::process::exit(0);
+                    }
+
+                    input.push(c);
+                }
+                KeyCode::Tab => {
+                    // Find the first builtin that starts with what the user typed
+                    if let Some(matched) = ShellBuiltins::ALL_STRINGS
+                        .iter()
+                        .find(|&&cmd| cmd.starts_with(&input))
+                    {
+                        input = matched.to_string();
+                        // Add a trailing space so they can immediately type arguments
+                        input.push(' ');
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    // 4. Return to normal mode before executing the command!
+    disable_raw_mode()?;
+    Ok(input)
 }
 
 fn execute_with_redirection(
@@ -252,10 +323,18 @@ fn create_stream(
 
 fn main() {
     loop {
-        print!("$ ");
-        io::stdout().flush().unwrap();
-        let mut command = String::new();
-        io::stdin().read_line(&mut command).unwrap();
+        // print!("$ ");
+        // io::stdout().flush().unwrap();
+        // let mut command = String::new();
+        // io::stdin().read_line(&mut command).unwrap();
+
+        let command = match read_input_with_autocomplete() {
+            Ok(cmd) => cmd,
+            Err(e) => {
+                eprintln!("Error reading input: {}", e);
+                break;
+            }
+        };
 
         let mut parts: Vec<String> = parse_args(command.trim());
         if parts.is_empty() {
