@@ -6,13 +6,16 @@ use crossterm::{
     style::Print,
     terminal::{Clear, ClearType, disable_raw_mode, enable_raw_mode},
 };
-use std::fs::{File, OpenOptions};
 #[allow(unused_imports)]
 use std::io::{self, Write};
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::process::{Command, Stdio};
+use std::{
+    cmp::min,
+    fs::{File, OpenOptions},
+};
 use std::{env, path::PathBuf};
 enum ShellBuiltins {
     ECHO,
@@ -146,6 +149,13 @@ fn read_input_with_autocomplete() -> Result<String> {
                                     input.push(' ');
                                     cursor_pos = input.len();
                                     tab_pressed_count = 0;
+                                } else if matches.len() > 1
+                                    && let common_prefix = longest_common_prefix(&matches)
+                                    && common_prefix.len() > input.len()
+                                {
+                                    input = common_prefix;
+                                    cursor_pos = input.len();
+                                    tab_pressed_count = 0;
                                 } else if matches.len() > 1 && tab_pressed_count == 2 {
                                     println!("\r\n{}", matches.join("  "));
                                     // Re-render the prompt and current input after showing options
@@ -205,6 +215,24 @@ fn find_all_match_in_path(partial_input: &str) -> Option<Vec<String>> {
         }
     }
     return None;
+}
+
+fn longest_common_prefix(matches: &Vec<String>) -> String {
+    if matches.is_empty() {
+        return "".to_string();
+    }
+    let mut strings = matches.clone();
+    strings.sort();
+    let first_match: Vec<char> = strings[0].chars().collect();
+    let last_match: Vec<char> = strings[strings.len() - 1].chars().collect();
+    let mut lcp: Vec<char> = Vec::new();
+    for i in 0..min(first_match.len(), last_match.len()) {
+        if first_match[i] != last_match[i] {
+            return lcp.into_iter().collect();
+        }
+        lcp.push(first_match[i]);
+    }
+    return lcp.into_iter().collect();
 }
 
 fn execute_with_redirection(
