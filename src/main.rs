@@ -33,6 +33,12 @@ fn get_command(command: &str) -> Option<ShellBuiltins> {
     }
 }
 
+#[cfg(windows)]
+const EXE_ARRAY: &[&str] = &["exe", "bat", "cmd", "com"];
+
+#[cfg(unix)]
+const EXE_ARRAY: &[&str] = &[""];
+
 impl ShellBuiltins {
     const ALL_STRINGS: [&'static str; 5] = ["echo", "exit", "type", "pwd", "cd"];
 }
@@ -130,16 +136,10 @@ fn read_input_with_autocomplete() -> Result<String> {
                         input.push(' ');
                         cursor_pos = input.len();
                     } else {
-                        // 2. If no builtin matches, try to match commands in $PATH
-                        // We use the function YOU already wrote!
-                        if let Some(path_match) = is_executable_command(&input) {
-                            // Get just the filename (e.g., "ls") from the full path
-                            if let Some(file_name) = path_match.file_name().and_then(|n| n.to_str())
-                            {
-                                input = file_name.to_string();
-                                input.push(' ');
-                                cursor_pos = input.len();
-                            }
+                        if let Some(path_match) = find_single_match_in_path(&input) {
+                            input = path_match;
+                            input.push(' ');
+                            cursor_pos = input.len();
                         } else {
                             // 3. Truly no match found
                             print!("\x07");
@@ -153,9 +153,31 @@ fn read_input_with_autocomplete() -> Result<String> {
         }
     }
 
-    // 4. Return to normal mode before executing the command!
     disable_raw_mode()?;
     Ok(input)
+}
+
+fn find_single_match_in_path(partial_input: &str) -> Option<String> {
+    if partial_input.is_empty() {
+        return None;
+    }
+    if let Some(path_env) = env::var_os("PATH") {
+        for dir in env::split_paths(&path_env) {
+            if let Ok(entries) = std::fs::read_dir(dir) {
+                for entry in entries.flatten() {
+                    if let Some(name) = entry.file_name().to_str() {
+                        if name.starts_with(partial_input)
+                            && EXE_ARRAY.iter().any(|&ext| name.ends_with(ext))
+                            && is_executable_path(&entry.path())
+                        {
+                            return Some(name.to_string());
+                        }
+                    }
+                }
+            }
+        }
+    }
+    return None;
 }
 
 fn execute_with_redirection(
@@ -185,34 +207,35 @@ fn execute_with_redirection(
     return Ok(());
 }
 
-fn is_executable_command(command: &str) -> Option<PathBuf> {
+fn is_executable_path(full_path: &PathBuf) -> bool {
+    if full_path.is_file() {
+        #[cfg(unix)]
+        {
+            if let Ok(metadata) = full_path.metadata() {
+                if metadata.permissions().mode() & 0o111 != 0 {
+                    return true;
+                }
+            }
+        }
+
+        #[cfg(windows)]
+        {
+            return true;
+        }
+    }
+    EXE_ARRAY.iter().any(|&ext| {
+        if ext.is_empty() {
+            return false;
+        }
+        full_path.with_extension(ext).is_file()
+    })
+}
+
+fn is_variable_path(command: &str) -> Option<PathBuf> {
     if let Some(path_env) = env::var_os("PATH") {
-        let exe_array: [&str; 4] = ["", "exe", "bat", "cmd"];
         for dir in env::split_paths(&path_env) {
             let full_path = dir.join(command);
-            if exe_array.iter().any(|&ext| {
-                if ext.is_empty() {
-                    if full_path.exists() && full_path.is_file() {
-                        #[allow(unused_variables)]
-                        if let Ok(metadata) = full_path.metadata() {
-                            #[cfg(unix)]
-                            {
-                                return metadata.permissions().mode() & 0o111 != 0;
-                            }
-                            #[cfg(not(unix))]
-                            {
-                                return false;
-                            }
-                        } else {
-                            return false;
-                        }
-                    } else {
-                        return false;
-                    }
-                } else {
-                    full_path.with_extension(ext).exists()
-                }
-            }) {
+            if is_executable_path(&full_path) {
                 return Some(full_path);
             }
         }
@@ -325,7 +348,7 @@ fn type_functionality(parts: &Vec<String>, stream: &mut dyn Write) {
     match get_command(&parts[1]) {
         Some(_) => writeln!(stream, "{} is a shell builtin", parts[1]).unwrap(),
         _ => {
-            if let Some(full_path) = is_executable_command(&parts[1]) {
+            if let Some(full_path) = is_variable_path(&parts[1]) {
                 writeln!(stream, "{} is {}", &parts[1], full_path.display()).unwrap();
             } else {
                 writeln!(stream, "{}: not found", &parts[1]).unwrap();
@@ -349,7 +372,7 @@ fn not_shell_buitin(
         }
     } else {
         // Standard non-redirected logic...
-        if let Some(_) = is_executable_command(&parts[0]) {
+        if let Some(_) = is_variable_path(&parts[0]) {
             let _ = Command::new(&parts[0]).args(&parts[1..]).status();
         } else {
             println!("{}: command not found", parts[0]);
@@ -421,6 +444,7 @@ fn main() {
                 parts.truncate(pos);
             }
         }
+        find_single_match_in_path(&parts[0]);
 
         match get_command(&parts[0]) {
             Some(builtin) => {
