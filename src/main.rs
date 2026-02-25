@@ -8,6 +8,7 @@ use crossterm::{
 };
 #[allow(unused_imports)]
 use std::io::{self, Write};
+use std::iter::Peekable;
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
@@ -298,7 +299,8 @@ fn is_variable_path(command: &str) -> Option<PathBuf> {
     return None;
 }
 
-fn parse_args(input: &str) -> Vec<String> {
+fn parse_args(input: &str) -> (Vec<String>, bool) {
+    let mut is_pipeline: bool = false;
     let mut args: Vec<String> = Vec::new();
     let mut current_arg: String = String::new();
     let mut quote_char: Option<char> = None; // None means we are NOT in quotes
@@ -325,6 +327,9 @@ fn parse_args(input: &str) -> Vec<String> {
                 }
             }
             (_, c) => {
+                if c == '|' {
+                    is_pipeline = true;
+                }
                 current_arg.push(c);
             }
         }
@@ -333,7 +338,7 @@ fn parse_args(input: &str) -> Vec<String> {
         args.push(current_arg);
     }
 
-    args
+    (args, is_pipeline)
 }
 
 fn set_current_dit(parent_path: &Path, path: &str) {
@@ -458,6 +463,49 @@ fn create_stream(
     Box::new(io::stdout())
 }
 
+fn execute_pipeline<'a>(
+    commands: &mut Peekable<impl Iterator<Item = &'a [String]>>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut previous_stdout: Option<Stdio> = None;
+    let mut children = Vec::new(); // Store the "remotes" to our workers
+
+    while let Some(cmd_parts) = commands.next() {
+        let mut child_cfg = Command::new(&cmd_parts[0]);
+        child_cfg.args(&cmd_parts[1..]);
+
+        // Connect the "read end" handle we saved from the last loop
+        if let Some(stdin_source) = previous_stdout {
+            child_cfg.stdin(stdin_source);
+        }
+
+        if commands.peek().is_some() {
+            // Not the last command: create a new pipe handle
+            child_cfg.stdout(Stdio::piped());
+        } else {
+            // Last command: send streaming data to the terminal
+            child_cfg.stdout(Stdio::inherit());
+        }
+
+        let mut child = child_cfg.spawn()?;
+
+        // Capture the "read end" of this child's pipe for the next child
+        if let Some(out) = child.stdout.take() {
+            previous_stdout = Some(Stdio::from(out));
+        } else {
+            previous_stdout = None;
+        }
+
+        children.push(child); // Keep the handle so we can wait later
+    }
+
+    // IMPORTANT: Wait for all children to finish before returning to the prompt
+    for mut child in children {
+        child.wait()?;
+    }
+
+    Ok(())
+}
+
 fn main() {
     loop {
         // print!("$ ");
@@ -473,9 +521,14 @@ fn main() {
             }
         };
 
-        let mut parts: Vec<String> = parse_args(command.trim());
+        let (mut parts, is_pipeline): (Vec<String>, bool) = parse_args(command.trim());
         if parts.is_empty() {
             // println!("{}: command not found", command.trim());
+            continue;
+        }
+        if is_pipeline {
+            let mut commands = parts.split(|s| s == "|").peekable();
+            execute_pipeline(&mut commands).unwrap();
             continue;
         }
 
