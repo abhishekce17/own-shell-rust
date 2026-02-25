@@ -561,7 +561,7 @@ fn history_functionality(parts: &[String], stream: &mut dyn Write) {
                 if n > 0 {
                     let start_index = history_vec.len().saturating_sub(n);
                     for (i, cmd) in history_vec[start_index..].iter().enumerate() {
-                        writeln!(stream, "   {}  {}", start_index + i + 1, cmd).unwrap();
+                        writeln!(stream, "    {}  {}", start_index + i + 1, cmd).unwrap();
                     }
                     return;
                 }
@@ -569,7 +569,7 @@ fn history_functionality(parts: &[String], stream: &mut dyn Write) {
         }
 
         for (i, cmd) in history_vec.iter().enumerate() {
-            writeln!(stream, "   {}  {}", i + 1, cmd).unwrap();
+            writeln!(stream, "    {}  {}", i + 1, cmd).unwrap();
         }
     } else {
         writeln!(stream, "No history found.").unwrap();
