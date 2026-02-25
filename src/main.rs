@@ -554,8 +554,9 @@ fn execute_pipeline<'a>(
     Ok(())
 }
 
-fn history_functionality(parts: &[String], stream: &mut dyn Write) {
-    if let Some(history_vec) = get_history_vec() {
+fn history_functionality(parts: &[String], history_vec: &Vec<String>, stream: &mut dyn Write) {
+    // if let Some(history_vec) = get_history_vec() {
+    if !history_vec.is_empty() {
         if parts.len() >= 1 {
             if let Ok(n) = parts[0].parse::<usize>() {
                 if n > 0 {
@@ -607,6 +608,7 @@ fn get_history_file_path() -> Option<PathBuf> {
 }
 
 fn main() {
+    let mut history_vec: Vec<String> = Vec::new();
     loop {
         // print!("$ ");
         // io::stdout().flush().unwrap();
@@ -626,7 +628,8 @@ fn main() {
                     break;
                 }
             };
-            store_history(&command);
+            // store_history(&command);
+            history_vec.push(command.clone());
         }
 
         let (mut parts, is_pipeline): (Vec<String>, bool) = parse_args(command.trim());
@@ -676,7 +679,9 @@ fn main() {
                     ShellBuiltins::PWD => pwd_functionality(&mut *stream),
                     ShellBuiltins::CD => cd_functionality(&parts),
                     ShellBuiltins::TYPE => type_functionality(&parts, &mut *stream),
-                    ShellBuiltins::HISTORY => history_functionality(&parts[1..], &mut *stream),
+                    ShellBuiltins::HISTORY => {
+                        history_functionality(&parts[1..], &history_vec, &mut *stream)
+                    }
                 }
             }
             _ => not_shell_buitin(&parts, &redirect_file, redirect_err, is_append),
