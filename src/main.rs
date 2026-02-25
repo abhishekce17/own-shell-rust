@@ -566,8 +566,10 @@ fn history_functionality(parts: &[String], stream: &mut dyn Write) {
                 }
             }
         }
-        let contents = history_vec.join("\n");
-        writeln!(stream, "{}", contents).unwrap();
+
+        for (i, cmd) in history_vec.iter().enumerate() {
+            writeln!(stream, "  {}  {}", i + 1, cmd).unwrap();
+        }
     } else {
         writeln!(stream, "No history found.").unwrap();
     }
