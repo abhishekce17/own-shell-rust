@@ -470,8 +470,17 @@ fn execute_pipeline<'a>(
     let mut children = Vec::new(); // Store the "remotes" to our workers
 
     while let Some(cmd_parts) = commands.next() {
-        let mut child_cfg = Command::new(&cmd_parts[0]);
-        child_cfg.args(&cmd_parts[1..]);
+        let cmd_name: &String = &cmd_parts[0];
+        let mut child_cfg: Command;
+
+        if get_command(cmd_name).is_some() {
+            child_cfg = Command::new(env::current_exe()?);
+            child_cfg.arg("--internal-run");
+            child_cfg.args(cmd_parts); // Pass the command and its args
+        } else {
+            child_cfg = Command::new(cmd_name);
+            child_cfg.args(&cmd_parts[1..]);
+        }
 
         // Connect the "read end" handle we saved from the last loop
         if let Some(stdin_source) = previous_stdout {
@@ -512,21 +521,34 @@ fn main() {
         // io::stdout().flush().unwrap();
         // let mut command = String::new();
         // io::stdin().read_line(&mut command).unwrap();
+        let command: String;
 
-        let command = match read_input_with_autocomplete() {
-            Ok(cmd) => cmd,
-            Err(e) => {
-                eprintln!("Error reading input: {}", e);
-                break;
-            }
-        };
+        let args: Vec<String> = env::args().collect();
+        if args.len() > 2 && args[1] == "--internal-run" {
+            command = args[2..].join(" ");
+            // We want to bypass the builtin
+        } else {
+            command = match read_input_with_autocomplete() {
+                Ok(cmd) => cmd,
+                Err(e) => {
+                    eprintln!("Error reading input: {}", e);
+                    break;
+                }
+            };
+        }
 
         let (mut parts, is_pipeline): (Vec<String>, bool) = parse_args(command.trim());
         if parts.is_empty() {
             // println!("{}: command not found", command.trim());
+            if args.len() > 1 && args[1] == "--internal-run" {
+                std::process::exit(0);
+            }
             continue;
         }
         if is_pipeline {
+            if args.len() > 1 && args[1] == "--internal-run" {
+                std::process::exit(0);
+            }
             let mut commands = parts.split(|s| s == "|").peekable();
             execute_pipeline(&mut commands).unwrap();
             continue;
@@ -565,6 +587,9 @@ fn main() {
                 }
             }
             _ => not_shell_buitin(&parts, &redirect_file, redirect_err, is_append),
+        }
+        if args.len() > 1 && args[1] == "--internal-run" {
+            std::process::exit(0);
         }
     }
 }
