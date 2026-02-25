@@ -138,10 +138,10 @@ fn read_input(history_vec: &Vec<String>) -> Result<String> {
                 KeyCode::Up => {
                     // If we are not at the oldest command yet (index 0)
                     if history_index > 0 {
+                        input = history_vec[history_index as usize].clone();
                         history_index -= 1; // 1. Change index FIRST
 
                         // 2. Load the text SECOND
-                        input = history_vec[history_index as usize].clone();
                         cursor_pos = input.len();
                         tab_pressed_count = 0;
                     }
