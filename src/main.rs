@@ -60,7 +60,7 @@ fn read_input(history_vec: &Vec<String>) -> Result<String> {
     let mut tab_pressed_count: i32 = 0;
     // let history_vec: Vec<String> = get_history_vec().unwrap_or_default();
     let history_vec: &Vec<String> = history_vec;
-    let mut history_index: i32 = history_vec.len() as i32 - 1; // Track how many times Up has been pressed to navigate history (0 means current input)
+    let mut history_index: i32 = history_vec.len() as i32; // Track how many times Up has been pressed to navigate history (0 means current input)
 
     loop {
         // 2. FLICKER-FREE RENDER LOOP
