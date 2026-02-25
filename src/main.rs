@@ -24,6 +24,7 @@ enum ShellBuiltins {
     TYPE,
     PWD,
     CD,
+    HISTORY,
 }
 
 fn get_command(command: &str) -> Option<ShellBuiltins> {
@@ -33,28 +34,32 @@ fn get_command(command: &str) -> Option<ShellBuiltins> {
         "type" => Some(ShellBuiltins::TYPE),
         "pwd" => Some(ShellBuiltins::PWD),
         "cd" => Some(ShellBuiltins::CD),
+        "history" => Some(ShellBuiltins::HISTORY),
         _ => None,
     }
 }
 
 #[cfg(windows)]
 const EXE_ARRAY: &[&str] = &["exe", "bat", "cmd", "com"];
+const HISTORY_FILE_NAME: &str = ".myshell_history"; // The hidden file name for storing command history
 
 #[cfg(unix)]
 const EXE_ARRAY: &[&str] = &[""];
 
 impl ShellBuiltins {
-    const ALL_STRINGS: [&'static str; 5] = ["echo", "exit", "type", "pwd", "cd"];
+    const ALL_STRINGS: [&'static str; 6] = ["echo", "exit", "type", "pwd", "cd", "history"];
 }
 
-fn read_input_with_autocomplete() -> Result<String> {
+fn read_input() -> Result<String> {
     // 1. Enter raw mode just for typing
     enable_raw_mode()?;
     let mut stdout = io::stdout();
 
-    let mut input = String::new();
-    let mut cursor_pos = 0; // Track exactly where the blinking cursor should be
+    let mut input: String = String::new();
+    let mut cursor_pos: usize = 0; // Track exactly where the blinking cursor should be
     let mut tab_pressed_count: i32 = 0;
+    let history_vec: Vec<String> = get_history_vec().unwrap_or_default();
+    let mut history_index: i32 = history_vec.len() as i32 - 1; // Track how many times Up has been pressed to navigate history (0 means current input)
 
     loop {
         // 2. FLICKER-FREE RENDER LOOP
@@ -129,6 +134,37 @@ fn read_input_with_autocomplete() -> Result<String> {
                     }
                 }
 
+                KeyCode::Up => {
+                    // If we are not at the oldest command yet (index 0)
+                    if history_index > 0 {
+                        history_index -= 1; // 1. Change index FIRST
+
+                        // 2. Load the text SECOND
+                        input = history_vec[history_index as usize].clone();
+                        cursor_pos = input.len();
+                        tab_pressed_count = 0;
+                    }
+                }
+
+                KeyCode::Down => {
+                    // If we are somewhere in the past (less than the length of the vector)
+                    if history_index < history_vec.len() as i32 {
+                        history_index += 1; // 1. Change index FIRST
+
+                        // 2. Load the text SECOND
+                        if history_index == history_vec.len() as i32 {
+                            // We just moved past the newest command into the "present".
+                            // Clear the input so the user can type a new command.
+                            input.clear();
+                        } else {
+                            // We are still looking at past history.
+                            input = history_vec[history_index as usize].clone();
+                        }
+
+                        cursor_pos = input.len();
+                        tab_pressed_count = 0;
+                    }
+                }
                 // --- AUTOCOMPLETION ---
                 KeyCode::Tab => {
                     tab_pressed_count += 1;
@@ -404,6 +440,9 @@ fn pwd_functionality(stream: &mut dyn Write) {
 }
 
 fn type_functionality(parts: &Vec<String>, stream: &mut dyn Write) {
+    if parts.len() < 2 {
+        return;
+    }
     match get_command(&parts[1]) {
         Some(_) => writeln!(stream, "{} is a shell builtin", parts[1]).unwrap(),
         _ => {
@@ -515,6 +554,55 @@ fn execute_pipeline<'a>(
     Ok(())
 }
 
+fn history_functionality(parts: &[String], stream: &mut dyn Write) {
+    if let Some(history_vec) = get_history_vec() {
+        if parts.len() >= 1 {
+            if let Ok(n) = parts[0].parse::<usize>() {
+                if n > 0 {
+                    let start_index = history_vec.len().saturating_sub(n);
+                    let output = history_vec[start_index..].join("\n");
+                    writeln!(stream, "{}", output).unwrap();
+                    return;
+                }
+            }
+        }
+        let contents = history_vec.join("\n");
+        writeln!(stream, "{}", contents).unwrap();
+    } else {
+        writeln!(stream, "No history found.").unwrap();
+    }
+}
+
+fn get_history_vec() -> Option<Vec<String>> {
+    if let Some(history_path) = get_history_file_path() {
+        if let Ok(contents) = std::fs::read_to_string(history_path) {
+            return Some(contents.lines().map(|s| s.to_string()).collect());
+        }
+    }
+    None
+}
+
+fn store_history(command: &String) {
+    if let Some(history_path) = get_history_file_path() {
+        if let Err(e) = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(history_path)
+            .and_then(|mut file| writeln!(file, "{}", command))
+        {
+            eprintln!("Error storing history: {}", e);
+        }
+    }
+}
+
+fn get_history_file_path() -> Option<PathBuf> {
+    if let Some(mut home_path) = env::home_dir() {
+        home_path.push(HISTORY_FILE_NAME); // The hidden file name
+        return Some(home_path);
+    }
+    None
+}
+
 fn main() {
     loop {
         // print!("$ ");
@@ -528,13 +616,14 @@ fn main() {
             command = args[2..].join(" ");
             // We want to bypass the builtin
         } else {
-            command = match read_input_with_autocomplete() {
+            command = match read_input() {
                 Ok(cmd) => cmd,
                 Err(e) => {
                     eprintln!("Error reading input: {}", e);
                     break;
                 }
             };
+            store_history(&command);
         }
 
         let (mut parts, is_pipeline): (Vec<String>, bool) = parse_args(command.trim());
@@ -584,6 +673,7 @@ fn main() {
                     ShellBuiltins::PWD => pwd_functionality(&mut *stream),
                     ShellBuiltins::CD => cd_functionality(&parts),
                     ShellBuiltins::TYPE => type_functionality(&parts, &mut *stream),
+                    ShellBuiltins::HISTORY => history_functionality(&parts[1..], &mut *stream),
                 }
             }
             _ => not_shell_buitin(&parts, &redirect_file, redirect_err, is_append),
