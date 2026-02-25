@@ -150,8 +150,6 @@ fn read_input(history_vec: &Vec<String>) -> Result<String> {
                 KeyCode::Down => {
                     // If we are somewhere in the past (less than the length of the vector)
                     if history_index < history_vec.len() as i32 {
-                        history_index += 1; // 1. Change index FIRST
-
                         // 2. Load the text SECOND
                         if history_index == history_vec.len() as i32 {
                             // We just moved past the newest command into the "present".
@@ -161,6 +159,7 @@ fn read_input(history_vec: &Vec<String>) -> Result<String> {
                             // We are still looking at past history.
                             input = history_vec[history_index as usize].clone();
                         }
+                        history_index += 1; // 1. Change index FIRST
 
                         cursor_pos = input.len();
                         tab_pressed_count = 0;
