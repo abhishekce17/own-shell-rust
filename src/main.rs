@@ -50,7 +50,7 @@ impl ShellBuiltins {
     const ALL_STRINGS: [&'static str; 6] = ["echo", "exit", "type", "pwd", "cd", "history"];
 }
 
-fn read_input() -> Result<String> {
+fn read_input(history_vec: &Vec<String>) -> Result<String> {
     // 1. Enter raw mode just for typing
     enable_raw_mode()?;
     let mut stdout = io::stdout();
@@ -58,7 +58,8 @@ fn read_input() -> Result<String> {
     let mut input: String = String::new();
     let mut cursor_pos: usize = 0; // Track exactly where the blinking cursor should be
     let mut tab_pressed_count: i32 = 0;
-    let history_vec: Vec<String> = get_history_vec().unwrap_or_default();
+    // let history_vec: Vec<String> = get_history_vec().unwrap_or_default();
+    let history_vec: &Vec<String> = history_vec;
     let mut history_index: i32 = history_vec.len() as i32 - 1; // Track how many times Up has been pressed to navigate history (0 means current input)
 
     loop {
@@ -621,7 +622,7 @@ fn main() {
             command = args[2..].join(" ");
             // We want to bypass the builtin
         } else {
-            command = match read_input() {
+            command = match read_input(&history_vec) {
                 Ok(cmd) => cmd,
                 Err(e) => {
                     eprintln!("Error reading input: {}", e);
