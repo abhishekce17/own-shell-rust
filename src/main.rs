@@ -8,7 +8,6 @@ use crossterm::{
 };
 #[allow(unused_imports)]
 use std::io::{self, Write};
-use std::iter::Peekable;
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
@@ -17,6 +16,7 @@ use std::{
     cmp::min,
     fs::{File, OpenOptions},
 };
+use std::{collections::VecDeque, iter::Peekable};
 use std::{env, path::PathBuf};
 enum ShellBuiltins {
     ECHO,
@@ -50,7 +50,7 @@ impl ShellBuiltins {
     const ALL_STRINGS: [&'static str; 6] = ["echo", "exit", "type", "pwd", "cd", "history"];
 }
 
-fn read_input(history_vec: &Vec<String>) -> Result<String> {
+fn read_input(history_vec: &VecDeque<String>) -> Result<String> {
     // 1. Enter raw mode just for typing
     enable_raw_mode()?;
     let mut stdout = io::stdout();
@@ -59,7 +59,7 @@ fn read_input(history_vec: &Vec<String>) -> Result<String> {
     let mut cursor_pos: usize = 0; // Track exactly where the blinking cursor should be
     let mut tab_pressed_count: i32 = 0;
     // let history_vec: Vec<String> = get_history_vec().unwrap_or_default();
-    let history_vec: &Vec<String> = history_vec;
+    let history_vec: &VecDeque<String> = history_vec;
     let mut history_index: i32 = history_vec.len() as i32; // Track how many times Up has been pressed to navigate history (0 means current input)
 
     loop {
@@ -554,14 +554,20 @@ fn execute_pipeline<'a>(
 
     Ok(())
 }
-fn history_functionality(parts: &[String], history_vec: &mut Vec<String>, stream: &mut dyn Write) {
+fn history_functionality(
+    parts: &[String],
+    history_vec: &mut VecDeque<String>,
+    stream: &mut dyn Write,
+) {
     if parts.len() >= 1 {
         match parts[0].as_str() {
             "-r" => {
                 if parts.len() >= 2 {
                     let file_path = &parts[1];
                     if let Ok(contents) = std::fs::read_to_string(file_path) {
+                        let last_history = history_vec[history_vec.len().saturating_sub(1)].clone();
                         *history_vec = contents.lines().map(|s| s.to_string()).collect();
+                        history_vec.push_front(last_history); // Preserve the current session's history
                         return; // Done!
                     } else {
                         writeln!(stream, "Error reading history from file: {}", file_path).unwrap();
@@ -628,8 +634,8 @@ fn history_functionality(parts: &[String], history_vec: &mut Vec<String>, stream
                         }
 
                         let start_index = history_vec.len().saturating_sub(n);
-                        for (i, cmd) in history_vec[start_index..].iter().enumerate() {
-                            writeln!(stream, "    {}  {}", start_index + i + 1, cmd).unwrap();
+                        for (i, cmd) in history_vec.iter().enumerate().skip(start_index) {
+                            writeln!(stream, "    {}  {}", i + 1, cmd).unwrap();
                         }
                         return; // Done!
                     }
@@ -677,7 +683,7 @@ fn history_functionality(parts: &[String], history_vec: &mut Vec<String>, stream
 // }
 
 fn main() {
-    let mut history_vec: Vec<String> = Vec::new();
+    let mut history_vec: VecDeque<String> = VecDeque::new();
     loop {
         // print!("$ ");
         // io::stdout().flush().unwrap();
@@ -698,6 +704,7 @@ fn main() {
                 }
             };
             // store_history(&command);
+            history_vec.push_back(command.clone());
         }
 
         let (mut parts, is_pipeline): (Vec<String>, bool) = parse_args(command.trim());
@@ -756,8 +763,6 @@ fn main() {
         }
         if args.len() > 1 && args[1] == "--internal-run" {
             std::process::exit(0);
-        } else {
-            history_vec.push(command.clone());
         }
     }
 }
