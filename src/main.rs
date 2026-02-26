@@ -594,6 +594,29 @@ fn history_functionality(parts: &[String], history_vec: &mut Vec<String>, stream
                     return;
                 }
             }
+            "-w" => {
+                if parts.len() >= 2 {
+                    let file_path = &parts[1];
+                    if let Err(e) = OpenOptions::new()
+                        .create(true)
+                        .write(true)
+                        .truncate(true)
+                        .open(file_path)
+                        .and_then(|mut file| {
+                            for cmd in history_vec.iter() {
+                                writeln!(file, "{}", cmd)?;
+                            }
+                            Ok(())
+                        })
+                    {
+                        writeln!(stream, "Error writing history to file: {}", e).unwrap();
+                    }
+                    return; // Done!
+                } else {
+                    writeln!(stream, "Usage: history -w <file_path>").unwrap();
+                    return;
+                }
+            }
             other_string => {
                 // If they typed a number, print the last N commands
                 if let Ok(n) = other_string.parse::<usize>() {
@@ -675,7 +698,6 @@ fn main() {
                 }
             };
             // store_history(&command);
-            history_vec.push(command.clone());
         }
 
         let (mut parts, is_pipeline): (Vec<String>, bool) = parse_args(command.trim());
@@ -734,6 +756,8 @@ fn main() {
         }
         if args.len() > 1 && args[1] == "--internal-run" {
             std::process::exit(0);
+        } else {
+            history_vec.push(command.clone());
         }
     }
 }
