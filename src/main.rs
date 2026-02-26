@@ -41,7 +41,7 @@ fn get_command(command: &str) -> Option<ShellBuiltins> {
 
 #[cfg(windows)]
 const EXE_ARRAY: &[&str] = &["exe", "bat", "cmd", "com"];
-const HISTORY_FILE_NAME: &str = ".myshell_history"; // The hidden file name for storing command history
+// const HISTORY_FILE_NAME: &str = ".myshell_history"; // The hidden file name for storing command history in the user's home directory
 
 #[cfg(unix)]
 const EXE_ARRAY: &[&str] = &[""];
@@ -554,59 +554,104 @@ fn execute_pipeline<'a>(
 
     Ok(())
 }
-
-fn history_functionality(parts: &[String], history_vec: &Vec<String>, stream: &mut dyn Write) {
-    // if let Some(history_vec) = get_history_vec() {
-    if !history_vec.is_empty() {
-        if parts.len() >= 1 {
-            if let Ok(n) = parts[0].parse::<usize>() {
-                if n > 0 {
-                    let start_index = history_vec.len().saturating_sub(n);
-                    for (i, cmd) in history_vec[start_index..].iter().enumerate() {
-                        writeln!(stream, "    {}  {}", start_index + i + 1, cmd).unwrap();
+fn history_functionality(parts: &[String], history_vec: &mut Vec<String>, stream: &mut dyn Write) {
+    if parts.len() >= 1 {
+        match parts[0].as_str() {
+            "-r" => {
+                if parts.len() >= 2 {
+                    let file_path = &parts[1];
+                    if let Ok(contents) = std::fs::read_to_string(file_path) {
+                        *history_vec = contents.lines().map(|s| s.to_string()).collect();
+                        return; // Done!
+                    } else {
+                        writeln!(stream, "Error reading history from file: {}", file_path).unwrap();
+                        return;
                     }
+                } else {
+                    writeln!(stream, "Usage: history -r <file_path>").unwrap();
                     return;
                 }
             }
-        }
+            "-a" => {
+                if parts.len() >= 2 {
+                    let file_path = &parts[1];
+                    if let Err(e) = OpenOptions::new()
+                        .create(true)
+                        .append(true)
+                        .open(file_path)
+                        .and_then(|mut file| {
+                            for cmd in history_vec.iter() {
+                                writeln!(file, "{}", cmd)?;
+                            }
+                            Ok(())
+                        })
+                    {
+                        writeln!(stream, "Error writing history to file: {}", e).unwrap();
+                    }
+                    return; // Done!
+                } else {
+                    writeln!(stream, "Usage: history -a <file_path>").unwrap();
+                    return;
+                }
+            }
+            other_string => {
+                // If they typed a number, print the last N commands
+                if let Ok(n) = other_string.parse::<usize>() {
+                    if n > 0 {
+                        // Check if empty right before printing!
+                        if history_vec.is_empty() {
+                            writeln!(stream, "No history found.").unwrap();
+                            return;
+                        }
 
+                        let start_index = history_vec.len().saturating_sub(n);
+                        for (i, cmd) in history_vec[start_index..].iter().enumerate() {
+                            writeln!(stream, "    {}  {}", start_index + i + 1, cmd).unwrap();
+                        }
+                        return; // Done!
+                    }
+                }
+            }
+        }
+    }
+
+    if history_vec.is_empty() {
+        writeln!(stream, "No history found.").unwrap();
+    } else {
         for (i, cmd) in history_vec.iter().enumerate() {
             writeln!(stream, "    {}  {}", i + 1, cmd).unwrap();
         }
-    } else {
-        writeln!(stream, "No history found.").unwrap();
     }
 }
+// fn get_history_vec() -> Option<Vec<String>> {
+//     if let Some(history_path) = get_history_file_path() {
+//         if let Ok(contents) = std::fs::read_to_string(history_path) {
+//             return Some(contents.lines().map(|s| s.to_string()).collect());
+//         }
+//     }
+//     None
+// }
 
-fn get_history_vec() -> Option<Vec<String>> {
-    if let Some(history_path) = get_history_file_path() {
-        if let Ok(contents) = std::fs::read_to_string(history_path) {
-            return Some(contents.lines().map(|s| s.to_string()).collect());
-        }
-    }
-    None
-}
+// fn store_history(command: &String) {
+//     if let Some(history_path) = get_history_file_path() {
+//         if let Err(e) = OpenOptions::new()
+//             .create(true)
+//             .append(true)
+//             .open(history_path)
+//             .and_then(|mut file| writeln!(file, "{}", command))
+//         {
+//             eprintln!("Error storing history: {}", e);
+//         }
+//     }
+// }
 
-fn store_history(command: &String) {
-    if let Some(history_path) = get_history_file_path() {
-        if let Err(e) = OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(history_path)
-            .and_then(|mut file| writeln!(file, "{}", command))
-        {
-            eprintln!("Error storing history: {}", e);
-        }
-    }
-}
-
-fn get_history_file_path() -> Option<PathBuf> {
-    if let Some(mut home_path) = env::home_dir() {
-        home_path.push(HISTORY_FILE_NAME); // The hidden file name
-        return Some(home_path);
-    }
-    None
-}
+// fn get_history_file_path() -> Option<PathBuf> {
+//     if let Some(mut home_path) = env::home_dir() {
+//         home_path.push(HISTORY_FILE_NAME); // The hidden file name
+//         return Some(home_path);
+//     }
+//     None
+// }
 
 fn main() {
     let mut history_vec: Vec<String> = Vec::new();
@@ -681,7 +726,7 @@ fn main() {
                     ShellBuiltins::CD => cd_functionality(&parts),
                     ShellBuiltins::TYPE => type_functionality(&parts, &mut *stream),
                     ShellBuiltins::HISTORY => {
-                        history_functionality(&parts[1..], &history_vec, &mut *stream)
+                        history_functionality(&parts[1..], &mut history_vec, &mut *stream)
                     }
                 }
             }
