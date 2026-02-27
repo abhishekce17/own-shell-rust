@@ -689,6 +689,14 @@ fn history_functionality(
 fn main() {
     let mut history_vec: VecDeque<String> = VecDeque::new();
     let mut last_written_index: usize = 0;
+    if let Ok(history_file_path_env) = env::var("HISTFILE") {
+        if let Ok(contents) = std::fs::read_to_string(&history_file_path_env) {
+            for line in contents.lines() {
+                history_vec.push_back(line.to_string());
+            }
+        }
+    }
+
     loop {
         // print!("$ ");
         // io::stdout().flush().unwrap();
