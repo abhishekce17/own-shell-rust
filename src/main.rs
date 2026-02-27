@@ -557,6 +557,7 @@ fn execute_pipeline<'a>(
 fn history_functionality(
     parts: &[String],
     history_vec: &mut VecDeque<String>,
+    last_written_index: &mut usize,
     stream: &mut dyn Write,
 ) {
     if parts.len() >= 1 {
@@ -586,9 +587,11 @@ fn history_functionality(
                         .append(true)
                         .open(file_path)
                         .and_then(|mut file| {
-                            for cmd in history_vec.iter() {
+                            for cmd in history_vec.iter().skip(*last_written_index) {
                                 writeln!(file, "{}", cmd)?;
                             }
+                            *last_written_index = history_vec.len();
+
                             Ok(())
                         })
                     {
@@ -612,6 +615,7 @@ fn history_functionality(
                             for cmd in history_vec.iter() {
                                 writeln!(file, "{}", cmd)?;
                             }
+                            *last_written_index = history_vec.len();
                             Ok(())
                         })
                     {
@@ -684,6 +688,7 @@ fn history_functionality(
 
 fn main() {
     let mut history_vec: VecDeque<String> = VecDeque::new();
+    let mut last_written_index: usize = 0;
     loop {
         // print!("$ ");
         // io::stdout().flush().unwrap();
@@ -754,9 +759,12 @@ fn main() {
                     ShellBuiltins::PWD => pwd_functionality(&mut *stream),
                     ShellBuiltins::CD => cd_functionality(&parts),
                     ShellBuiltins::TYPE => type_functionality(&parts, &mut *stream),
-                    ShellBuiltins::HISTORY => {
-                        history_functionality(&parts[1..], &mut history_vec, &mut *stream)
-                    }
+                    ShellBuiltins::HISTORY => history_functionality(
+                        &parts[1..],
+                        &mut history_vec,
+                        &mut last_written_index,
+                        &mut *stream,
+                    ),
                 }
             }
             _ => not_shell_buitin(&parts, &redirect_file, redirect_err, is_append),
