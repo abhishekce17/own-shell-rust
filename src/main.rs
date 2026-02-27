@@ -656,14 +656,14 @@ fn history_functionality(
         }
     }
 }
-// fn get_history_vec() -> Option<Vec<String>> {
-//     if let Some(history_path) = get_history_file_path() {
-//         if let Ok(contents) = std::fs::read_to_string(history_path) {
-//             return Some(contents.lines().map(|s| s.to_string()).collect());
-//         }
-//     }
-//     None
-// }
+fn get_history_vec() -> Option<VecDeque<String>> {
+    if let Some(history_path) = get_history_file_path() {
+        if let Ok(contents) = std::fs::read_to_string(history_path) {
+            return Some(contents.lines().map(|s| s.to_string()).collect());
+        }
+    }
+    None
+}
 
 // fn store_history(command: &String) {
 //     if let Some(history_path) = get_history_file_path() {
@@ -678,16 +678,33 @@ fn history_functionality(
 //     }
 // }
 
-// fn get_history_file_path() -> Option<PathBuf> {
-//     if let Some(mut home_path) = env::home_dir() {
-//         home_path.push(HISTORY_FILE_NAME); // The hidden file name
-//         return Some(home_path);
-//     }
-//     None
-// }
+fn get_history_file_path() -> Option<PathBuf> {
+    if let Ok(history_file_path_env) = env::var("HISTFILE") {
+        return Some(PathBuf::from(history_file_path_env));
+    }
+    None
+}
+
+fn cleanup_task_on_exit(history_vec: &VecDeque<String>) {
+    if let Some(history_path) = get_history_file_path() {
+        if let Err(e) = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(history_path)
+            .and_then(|mut file| {
+                for cmd in history_vec.iter() {
+                    writeln!(file, "{}", cmd)?;
+                }
+                Ok(())
+            })
+        {
+            eprintln!("Error cleaning up history file: {}", e);
+        }
+    }
+}
 
 fn main() {
-    let mut history_vec: VecDeque<String> = VecDeque::new();
+    let mut history_vec: VecDeque<String> = get_history_vec().unwrap_or_default();
     let mut last_written_index: usize = 0;
     if let Ok(history_file_path_env) = env::var("HISTFILE") {
         if let Ok(contents) = std::fs::read_to_string(&history_file_path_env) {
@@ -763,7 +780,10 @@ fn main() {
                     create_stream(&redirect_file, redirect_err, is_append);
                 match builtin {
                     ShellBuiltins::ECHO => echo_functionality(&parts[1..], &mut *stream),
-                    ShellBuiltins::EXIT => break,
+                    ShellBuiltins::EXIT => {
+                        cleanup_task_on_exit(&history_vec);
+                        break;
+                    }
                     ShellBuiltins::PWD => pwd_functionality(&mut *stream),
                     ShellBuiltins::CD => cd_functionality(&parts),
                     ShellBuiltins::TYPE => type_functionality(&parts, &mut *stream),
