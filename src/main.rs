@@ -689,7 +689,8 @@ fn cleanup_task_on_exit(history_vec: &VecDeque<String>) {
     if let Some(history_path) = get_history_file_path() {
         if let Err(e) = OpenOptions::new()
             .create(true)
-            .append(true)
+            .write(true)
+            .truncate(true)
             .open(history_path)
             .and_then(|mut file| {
                 for cmd in history_vec.iter() {
@@ -705,14 +706,7 @@ fn cleanup_task_on_exit(history_vec: &VecDeque<String>) {
 
 fn main() {
     let mut history_vec: VecDeque<String> = get_history_vec().unwrap_or_default();
-    let mut last_written_index: usize = 0;
-    if let Ok(history_file_path_env) = env::var("HISTFILE") {
-        if let Ok(contents) = std::fs::read_to_string(&history_file_path_env) {
-            for line in contents.lines() {
-                history_vec.push_back(line.to_string());
-            }
-        }
-    }
+    let mut last_written_index: usize = history_vec.len(); // Track how many commands from history have been written to HISTFILE for the -a option
 
     loop {
         // print!("$ ");
