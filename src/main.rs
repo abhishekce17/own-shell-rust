@@ -230,7 +230,14 @@ fn read_input(history_vec: &VecDeque<String>) -> Result<String> {
 
                         // 3. Process the matches
                         if matches.len() == 1 {
-                            input = format!("{} {} ", base_input, matches[0]);
+                            let the_match = &matches[0];
+
+                            if the_match.ends_with('/') {
+                                input = format!("{} {}", base_input, the_match);
+                            } else {
+                                input = format!("{} {} ", base_input, the_match);
+                            }
+
                             cursor_pos = input.len();
                             tab_pressed_count = 0;
                         } else if matches.len() > 1 {
@@ -309,20 +316,20 @@ fn get_file_completions(partial_path: &str) -> Vec<String> {
             for entry in entries.flatten() {
                 if let Some(file_name) = entry.file_name().to_str() {
                     if file_name.starts_with(&prefix) {
-                        // 3. THE FIX: Reattach the parent directory perfectly
+                        let mut matched_name = file_name.to_string();
+                        if entry.path().is_dir() {
+                            matched_name.push('/'); // Tag it with a slash!
+                        }
                         let full_match = if partial_path.ends_with('/') {
-                            // If they explicitly typed a trailing slash, just append the file
-                            format!("{}{}", partial_path, file_name)
+                            format!("{}{}", partial_path, matched_name)
                         } else if let Some(parent) = path.parent() {
-                            // If they didn't type a trailing slash, format it cleanly
                             if parent.as_os_str().is_empty() {
-                                file_name.to_string()
+                                matched_name
                             } else {
-                                format!("{}/{}", parent.display(), file_name)
+                                format!("{}/{}", parent.display(), matched_name)
                             }
                         } else {
-                            // Fallback (should rarely hit this based on logic above)
-                            file_name.to_string()
+                            matched_name
                         };
 
                         matches.push(full_match);
