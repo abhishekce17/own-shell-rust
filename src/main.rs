@@ -25,6 +25,7 @@ enum ShellBuiltins {
     PWD,
     CD,
     HISTORY,
+    CLS,
 }
 
 fn get_command(command: &str) -> Option<ShellBuiltins> {
@@ -35,6 +36,7 @@ fn get_command(command: &str) -> Option<ShellBuiltins> {
         "pwd" => Some(ShellBuiltins::PWD),
         "cd" => Some(ShellBuiltins::CD),
         "history" => Some(ShellBuiltins::HISTORY),
+        "cls" => Some(ShellBuiltins::CLS),
         _ => None,
     }
 }
@@ -908,6 +910,10 @@ fn main() {
                         &mut last_written_index,
                         &mut *stream,
                     ),
+                    ShellBuiltins::CLS => {
+                        queue!(io::stdout(), Clear(ClearType::All), cursor::MoveTo(0, 0)).unwrap();
+                        io::stdout().flush().unwrap();
+                    }
                 }
             }
             _ => not_shell_buitin(&parts, &redirect_file, redirect_err, is_append),
