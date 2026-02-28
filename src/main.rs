@@ -508,7 +508,7 @@ fn set_current_dit(parent_path: &Path, path: &str) {
     if new_path.exists() {
         env::set_current_dir(new_path).unwrap();
     } else {
-        println!("cd: {}: No such file or directory", &path);
+        println!("cd: {}: No such directory", &path);
     }
 }
 
