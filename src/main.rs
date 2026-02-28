@@ -832,6 +832,8 @@ fn main() {
         // io::stdout().flush().unwrap();
         // let mut command = String::new();
         // io::stdin().read_line(&mut command).unwrap();
+        let current_dir = env::current_dir().unwrap_or_default();
+        println!("{}", current_dir.display());
         let command: String;
 
         let args: Vec<String> = env::args().collect();
