@@ -170,55 +170,109 @@ fn read_input(history_vec: &VecDeque<String>) -> Result<String> {
                 KeyCode::Tab => {
                     tab_pressed_count += 1;
                     stdout.flush()?;
-                    // 1. Try to match Builtins first
-                    let builtin_match = ShellBuiltins::ALL_STRINGS
-                        .iter()
-                        .find(|&&cmd| cmd.starts_with(&input));
+                    if !input.contains(" ") {
+                        // 1. Try to match Builtins first
+                        let builtin_match = ShellBuiltins::ALL_STRINGS
+                            .iter()
+                            .find(|&&cmd| cmd.starts_with(&input));
 
-                    if let Some(matched) = builtin_match {
-                        input = matched.to_string();
-                        input.push(' ');
-                        cursor_pos = input.len();
-                    } else {
-                        match find_all_match_in_path(&input) {
-                            Some(matches) => {
-                                if matches.len() == 1 {
-                                    input = matches[0].clone();
-                                    input.push(' ');
-                                    cursor_pos = input.len();
-                                    tab_pressed_count = 0;
-                                } else if matches.len() > 1
-                                    && let common_prefix = longest_common_prefix(&matches)
-                                    && common_prefix.len() > input.len()
-                                {
-                                    input = common_prefix;
-                                    cursor_pos = input.len();
-                                    tab_pressed_count = 0;
-                                } else if matches.len() > 1 && tab_pressed_count == 2 {
-                                    println!("\r\n{}", matches.join("  "));
-                                    // Re-render the prompt and current input after showing options
-                                    queue!(
-                                        stdout,
-                                        cursor::MoveToColumn(0),
-                                        Clear(ClearType::CurrentLine),
-                                        Print(format!("$ {}", input)),
-                                        cursor::MoveToColumn((cursor_pos + 2) as u16)
-                                    )?;
-                                    stdout.flush()?;
-                                    tab_pressed_count = 0; // Reset the count after showing options
-                                } else {
+                        if let Some(matched) = builtin_match {
+                            input = matched.to_string();
+                            input.push(' ');
+                            cursor_pos = input.len();
+                        } else {
+                            match find_all_match_in_path(&input) {
+                                Some(matches) => {
+                                    if matches.len() == 1 {
+                                        input = matches[0].clone();
+                                        input.push(' ');
+                                        cursor_pos = input.len();
+                                        tab_pressed_count = 0;
+                                    } else if matches.len() > 1
+                                        && let common_prefix = longest_common_prefix(&matches)
+                                        && common_prefix.len() > input.len()
+                                    {
+                                        input = common_prefix;
+                                        cursor_pos = input.len();
+                                        tab_pressed_count = 0;
+                                    } else if matches.len() > 1 && tab_pressed_count == 2 {
+                                        println!("\r\n{}", matches.join("  "));
+                                        // Re-render the prompt and current input after showing options
+                                        queue!(
+                                            stdout,
+                                            cursor::MoveToColumn(0),
+                                            Clear(ClearType::CurrentLine),
+                                            Print(format!("$ {}", input)),
+                                            cursor::MoveToColumn((cursor_pos + 2) as u16)
+                                        )?;
+                                        stdout.flush()?;
+                                        tab_pressed_count = 0; // Reset the count after showing options
+                                    } else {
+                                        print!("\x07");
+                                        io::stdout().flush()?;
+                                    }
+                                }
+                                None => {
                                     print!("\x07");
                                     io::stdout().flush()?;
                                 }
                             }
-                            None => {
+                        }
+                    } else {
+                        // 1. Un-borrow the input
+                        let (base_input, search_term) = match input.rsplit_once(' ') {
+                            Some((base, term)) => (base.to_string(), term.to_string()),
+                            None => (String::new(), input.clone()),
+                        };
+
+                        // 2. USE THE HELPER FUNCTION!
+                        let matches = get_file_completions(&search_term);
+
+                        // 3. Process the matches
+                        if matches.len() == 1 {
+                            input = format!("{} {} ", base_input, matches[0]);
+                            cursor_pos = input.len();
+                            tab_pressed_count = 0;
+                        } else if matches.len() > 1 {
+                            let common_prefix = longest_common_prefix(&matches);
+
+                            if common_prefix.len() > search_term.len() {
+                                input = format!("{} {}", base_input, common_prefix);
+                                cursor_pos = input.len();
+                                tab_pressed_count = 0;
+                            } else if tab_pressed_count == 2 {
+                                let display_matches: Vec<String> = matches
+                                    .iter()
+                                    .map(|m| {
+                                        Path::new(m)
+                                            .file_name()
+                                            .unwrap_or_default()
+                                            .to_string_lossy()
+                                            .to_string()
+                                    })
+                                    .collect();
+
+                                println!("\r\n{}", display_matches.join("  "));
+
+                                queue!(
+                                    stdout,
+                                    cursor::MoveToColumn(0),
+                                    Clear(ClearType::CurrentLine),
+                                    Print(format!("$ {}", input)),
+                                    cursor::MoveToColumn((cursor_pos + 2) as u16)
+                                )?;
+                                stdout.flush()?;
+                                tab_pressed_count = 0;
+                            } else {
                                 print!("\x07");
                                 io::stdout().flush()?;
                             }
+                        } else {
+                            print!("\x07");
+                            io::stdout().flush()?;
                         }
                     }
                 }
-
                 _ => {} // Ignore any other keys
             }
         }
@@ -228,6 +282,52 @@ fn read_input(history_vec: &VecDeque<String>) -> Result<String> {
     Ok(input)
 }
 
+fn get_file_completions(partial_path: &str) -> Vec<String> {
+    let path = Path::new(partial_path);
+
+    let (search_dir, prefix) = if partial_path.ends_with('/') {
+        (path.to_path_buf(), String::new())
+    } else {
+        let dir = path.parent().unwrap_or(Path::new(""));
+        let file_name = path.file_name().unwrap_or_default().to_string_lossy();
+        (
+            if dir.as_os_str().is_empty() {
+                env::current_dir().unwrap_or_default()
+            } else {
+                dir.to_path_buf()
+            },
+            file_name.to_string(),
+        )
+    };
+
+    let mut matches = Vec::new();
+
+    if search_dir.exists() && search_dir.is_dir() {
+        if let Ok(entries) = std::fs::read_dir(&search_dir) {
+            for entry in entries.flatten() {
+                if let Some(file_name) = entry.file_name().to_str() {
+                    if file_name.starts_with(&prefix) {
+                        // Reattach the parent directory if the user typed one
+                        let full_match = if let Some(parent) = path.parent() {
+                            if parent.as_os_str().is_empty() {
+                                file_name.to_string()
+                            } else {
+                                format!("{}/{}", parent.display(), file_name)
+                            }
+                        } else {
+                            file_name.to_string()
+                        };
+
+                        matches.push(full_match);
+                    }
+                }
+            }
+        }
+    }
+
+    matches.sort();
+    matches
+}
 fn find_all_match_in_path(partial_input: &str) -> Option<Vec<String>> {
     if partial_input.is_empty() {
         return None;
