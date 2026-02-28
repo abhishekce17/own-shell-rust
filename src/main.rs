@@ -285,6 +285,7 @@ fn read_input(history_vec: &VecDeque<String>) -> Result<String> {
 fn get_file_completions(partial_path: &str) -> Vec<String> {
     let path = Path::new(partial_path);
 
+    // 1. Figure out exactly which directory to read, and what prefix to match
     let (search_dir, prefix) = if partial_path.ends_with('/') {
         (path.to_path_buf(), String::new())
     } else {
@@ -302,19 +303,25 @@ fn get_file_completions(partial_path: &str) -> Vec<String> {
 
     let mut matches = Vec::new();
 
+    // 2. Read the directory and collect matches
     if search_dir.exists() && search_dir.is_dir() {
         if let Ok(entries) = std::fs::read_dir(&search_dir) {
             for entry in entries.flatten() {
                 if let Some(file_name) = entry.file_name().to_str() {
                     if file_name.starts_with(&prefix) {
-                        // Reattach the parent directory if the user typed one
-                        let full_match = if let Some(parent) = path.parent() {
+                        // 3. THE FIX: Reattach the parent directory perfectly
+                        let full_match = if partial_path.ends_with('/') {
+                            // If they explicitly typed a trailing slash, just append the file
+                            format!("{}{}", partial_path, file_name)
+                        } else if let Some(parent) = path.parent() {
+                            // If they didn't type a trailing slash, format it cleanly
                             if parent.as_os_str().is_empty() {
                                 file_name.to_string()
                             } else {
                                 format!("{}/{}", parent.display(), file_name)
                             }
                         } else {
+                            // Fallback (should rarely hit this based on logic above)
                             file_name.to_string()
                         };
 
@@ -328,6 +335,7 @@ fn get_file_completions(partial_path: &str) -> Vec<String> {
     matches.sort();
     matches
 }
+
 fn find_all_match_in_path(partial_input: &str) -> Option<Vec<String>> {
     if partial_input.is_empty() {
         return None;
