@@ -523,7 +523,7 @@ fn cd_functionality(parts: &Vec<String>) {
                 env::set_current_dir(&parts[1]).unwrap();
                 return;
             } else {
-                println!("cd: {}: No such file or directory", &parts[1]);
+                set_current_dit(&env::current_dir().unwrap_or_default(), &parts[1][1..]);
                 return;
             }
         } else {
@@ -552,7 +552,7 @@ fn cd_functionality(parts: &Vec<String>) {
                         println!("cd: {}: No such file or directory", &parts[1])
                     }
                 }
-                _ => println!("cd: {}: No such file or directory", &parts[1]),
+                _ => set_current_dit(&env::current_dir().unwrap_or_default(), &parts[1]),
             };
         };
     }
