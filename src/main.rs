@@ -911,8 +911,20 @@ fn main() {
                         &mut *stream,
                     ),
                     ShellBuiltins::CLS => {
-                        queue!(io::stdout(), Clear(ClearType::All), cursor::MoveTo(0, 0)).unwrap();
-                        io::stdout().flush().unwrap();
+                        let mut stdout = io::stdout();
+
+                        #[cfg(windows)]
+                        let _ = crossterm::terminal::enable_raw_mode();
+
+                        let _ = crossterm::execute!(
+                            stdout,
+                            Clear(ClearType::All),
+                            Clear(ClearType::Purge), // Destroys the scrollback history
+                            cursor::MoveTo(0, 0)
+                        );
+
+                        #[cfg(windows)]
+                        let _ = crossterm::terminal::disable_raw_mode();
                     }
                 }
             }
