@@ -26,6 +26,8 @@ enum ShellBuiltins {
     CD,
     HISTORY,
     CLS,
+    LS,
+    MKDIR,
 }
 
 fn get_command(command: &str) -> Option<ShellBuiltins> {
@@ -37,6 +39,8 @@ fn get_command(command: &str) -> Option<ShellBuiltins> {
         "cd" => Some(ShellBuiltins::CD),
         "history" => Some(ShellBuiltins::HISTORY),
         "cls" => Some(ShellBuiltins::CLS),
+        "ls" => Some(ShellBuiltins::LS),
+        "mkdir" => Some(ShellBuiltins::MKDIR),
         _ => None,
     }
 }
@@ -825,6 +829,42 @@ fn cleanup_task_on_exit(history_vec: &VecDeque<String>) {
     }
 }
 
+fn ls_functionality(parts: &[String], stream: &mut dyn Write) {
+    // 1. Determine which directory to list (default to "." if no arg provided)
+    let path_str = if parts.is_empty() { "." } else { &parts[0] };
+    let path = Path::new(path_str);
+
+    if let Ok(entries) = std::fs::read_dir(path) {
+        let mut files = Vec::new();
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().to_string();
+            // 2. Distinguish directories with a trailing slash
+            if entry.path().is_dir() {
+                files.push(format!("{}/", name));
+            } else {
+                files.push(name);
+            }
+        }
+        // 3. Keep it organized
+        files.sort();
+        writeln!(stream, "{}", files.join("  ")).unwrap();
+    } else {
+        writeln!(stream, "ls: {}: No such directory", path_str).unwrap();
+    }
+}
+
+fn mkdir_functionality(parts: &[String]) {
+    if parts.is_empty() {
+        println!("mkdir: missing operand");
+        return;
+    }
+    for dir_name in parts {
+        if let Err(e) = std::fs::create_dir_all(dir_name) {
+            println!("mkdir: cannot create directory '{}': {}", dir_name, e);
+        }
+    }
+}
+
 fn main() {
     let mut history_vec: VecDeque<String> = get_history_vec().unwrap_or_default();
     let mut last_written_index: usize = history_vec.len(); // Track how many commands from history have been written to HISTFILE for the -a option
@@ -926,6 +966,8 @@ fn main() {
                         #[cfg(windows)]
                         let _ = crossterm::terminal::disable_raw_mode();
                     }
+                    ShellBuiltins::LS => ls_functionality(&parts[1..], &mut *stream),
+                    ShellBuiltins::MKDIR => mkdir_functionality(&parts[1..]),
                 }
             }
             _ => not_shell_buitin(&parts, &redirect_file, redirect_err, is_append),
