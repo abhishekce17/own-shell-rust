@@ -251,14 +251,18 @@ fn read_input(history_vec: &VecDeque<String>) -> Result<String> {
                                 let display_matches: Vec<String> = matches
                                     .iter()
                                     .map(|m| {
-                                        Path::new(m)
+                                        let mut name = Path::new(m)
                                             .file_name()
                                             .unwrap_or_default()
                                             .to_string_lossy()
-                                            .to_string()
+                                            .to_string();
+                                        if m.ends_with('/') {
+                                            name.push('/');
+                                        }
+
+                                        name
                                     })
                                     .collect();
-
                                 println!("\r\n{}", display_matches.join("  "));
 
                                 queue!(
